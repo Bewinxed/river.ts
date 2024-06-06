@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Stream Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 0;
+        }
+        #events {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Server-Sent Events Test</h1>
+    <div id="events"></div>
+    <script>
+        const eventSource = new EventSource("http://localhost:3000/events");
+
+        eventSource.onmessage = function(event) {
+            console.log("New event received:", event.data);
+            const messageElement = document.createElement("div");
+            messageElement.textContent = event.data;
+            document.getElementById("events").appendChild(messageElement);
+        };
+
+        eventSource.onerror = function(error) {
+            console.error("EventSource failed:", error);
+            eventSource.close();
+        };
+    </script>
+</body>
+</html>

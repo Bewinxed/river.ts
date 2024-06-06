@@ -1,4 +1,4 @@
-import { EventTypeBuilder } from "@/core/client";
+import { EventTypeBuilder } from "../../src/core/builder"
 import { serve } from "bun";
 import type { ServerResponse } from "node:http";
 
@@ -24,28 +24,31 @@ const server = serve({
                 clearInterval(intervalId);
               }
             }, 1000);
-          }))
+          }), {
+            headers: serverStream.headers()
+      
+          })
       
     }
-    return new Response("Not Found", { status: 404 });
+    return new Response(Bun.file("tests/test.html"))
+    // return new Response("Not Found", { status: 404 });
   },
 });
 
 // Create a RiverStream instance
 const clientStream = events.client();
 
-// Register event handlers
-clientStream.on("greeting", (data) => {
-  console.log("Received greeting:", data.message);
-});
-
 // Start streaming from the server
 clientStream.prepare("http://localhost:3000/events", {
     method: "POST",
 }).stream()
 
+clientStream.on("greeting", (data) => {
+  console.log(data);
+})
+
 // Keep the server running for a specific duration (e.g., 10 seconds)
-setTimeout(() => {
-  server.stop();
-}, 10000);
+// setTimeout(() => {
+//   server.stop();
+// }, 10000);
 
