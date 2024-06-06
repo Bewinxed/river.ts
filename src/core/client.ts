@@ -1,3 +1,4 @@
+//
 import type { HTTPMethods } from "@/types/http.js";
 import {
 	type EventMap,
@@ -16,6 +17,11 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 	public handlers: { [K in keyof T]?: EventHandler<T[K]> } = {};
 	private request_info?: RequestInfo;
 	private request_init?: RequestInit & { method: HTTPMethods };
+	private reconnectAttempts = 0;
+	private reconnectDelay = 1000;
+	private eventSource?: EventSource;
+	private abortController?: AbortController;
+	private closing = false;
 
 	/**
 	 * Initializes a new instance of the RiverStream class.
@@ -48,11 +54,11 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 	 */
 	public on<K extends keyof T>(
 		event_type: K,
-		handler: EventHandler<T[K]>,
+		handler: (data: T[K]) => void,
 	): this {
 		const wrapped_handler = (event: CustomEvent<T[K]>) => {
 			if (this.events[event_type]) {
-				handler(event.detail);
+				handler(event.detail as T[K]);
 			}
 		};
 		this.addEventListener(
@@ -70,7 +76,7 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 	 */
 	private handle_event<K extends keyof T>(event_type: K, data: T[K]): void {
 		const event = new CustomEvent<T[K]>(event_type as string, {
-			detail: data,
+			detail: data as T[K],
 		});
 		this.dispatchEvent(event);
 	}
@@ -98,67 +104,22 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 		if (!this.request_info) {
 			throw new RiverStreamError("Request information not set.");
 		}
+
 		if (this.request_init?.body || EventSource === undefined) {
-			const response = await fetch(this.request_info, this.request_init);
-			if (!response.ok || !response.body) {
-				throw new RiverStreamError(
-					`Failed to fetch: ${response.status} ${response.statusText}`,
-				);
-			}
-
-			const reader = response.body.getReader();
-			let buffer = "";
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) {
-					console.log("Stream finished");
-					break;
+			try {
+				this.abortController = new AbortController();
+				await this.startFetchStream();
+			} catch (error) {
+				if (this.closing) {
+					return;
 				}
-				buffer += new TextDecoder().decode(value);
-				const events = buffer.split("\n\n");
-				buffer = events.pop() || "";
-
-				for (const event of events) {
-					if (event.trim() !== "") {
-						const lines = event.trim().split("\n");
-						const eventType = lines
-							.find((line) => line.startsWith("event:"))
-							?.slice(6)
-							.trim();
-						const eventData = lines
-							.find((line) => line.startsWith("data:"))
-							?.slice(5)
-							.trim();
-
-						const baseEvent: BaseEvent = {
-							type: eventType || "message",
-							message: "",
-							data: null,
-							error: null,
-						};
-
-						if (eventData) {
-							try {
-								baseEvent.data = JSON.parse(eventData);
-							} catch (error) {
-								baseEvent.message = eventData;
-							}
-						}
-
-						if (eventType === "error") {
-							baseEvent.error = eventData;
-						}
-
-						this.handle_event(
-							baseEvent.type as keyof T,
-							baseEvent as T[keyof T],
-						);
-					}
-				}
+				console.error("Error during fetch stream:", (error as Error)?.message);
+				await this.reconnect();
 			}
 		} else {
-			const source = new EventSource(this.request_info.toString());
-			source.onmessage = (event) => {
+			this.eventSource = new EventSource(this.request_info.toString());
+
+			this.eventSource.onmessage = (event) => {
 				const baseEvent: BaseEvent = {
 					type: event.type,
 					message: event.data,
@@ -175,15 +136,100 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 				this.handle_event(baseEvent.type as keyof T, baseEvent as T[keyof T]);
 			};
 
-			source.onerror = (error) => {
-				const baseEvent: BaseEvent = {
-					type: "error",
-					message: "",
-					data: null,
-					error: error,
-				};
-				this.handle_event(baseEvent.type as keyof T, baseEvent as T[keyof T]);
+			this.eventSource.onerror = (error) => {
+				console.error("EventSource error:", error);
+				this.close();
+				this.reconnect();
 			};
 		}
+	}
+
+	private async startFetchStream(): Promise<void> {
+		// biome-ignore lint/style/noNonNullAssertion: <explanation>
+		const response = await fetch(this.request_info!, {
+			...this.request_init,
+			signal: this.abortController?.signal,
+		});
+
+		if (!response.ok || !response.body) {
+			throw new RiverStreamError(
+				`Failed to fetch: ${response.status} ${response.statusText}`,
+			);
+		}
+
+		const reader = response.body.getReader();
+		let buffer = "";
+
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) {
+				console.log("Stream finished");
+				break;
+			}
+
+			buffer += new TextDecoder().decode(value);
+			const events = buffer.split("\n\n");
+			buffer = events.pop() || "";
+
+			for (const event of events) {
+				if (event.trim() !== "") {
+					const lines = event.trim().split("\n");
+					let baseEvent: BaseEvent = {
+						type: "",
+						message: "",
+						data: null,
+						error: null,
+					};
+
+					for (const line of lines) {
+						if (line.startsWith("event:")) {
+							baseEvent.type = line.slice(6).trim();
+						} else if (line.startsWith("data:")) {
+							const data = line.slice(5).trim();
+							try {
+								const type = baseEvent.type;
+								baseEvent = JSON.parse(data);
+								baseEvent.type = type;
+							} catch (error) {
+								baseEvent.message = data;
+							}
+						} else if (line.startsWith("id:")) {
+							// Handle event ID if needed
+						} else if (line.startsWith("retry:")) {
+							const retryDelay = Number.parseInt(line.slice(6).trim(), 10);
+							if (!Number.isNaN(retryDelay)) {
+								this.reconnectDelay = retryDelay;
+							}
+						}
+					}
+
+					if (baseEvent.type === "error") {
+						baseEvent.error = baseEvent.data;
+					}
+
+					this.handle_event(baseEvent.type as keyof T, baseEvent as T[keyof T]);
+				}
+			}
+		}
+	}
+
+	public close(): void {
+		this.closing = true;
+		if (this.eventSource) {
+			this.eventSource.close();
+			this.eventSource = undefined;
+		}
+		if (this.abortController) {
+			this.abortController.abort();
+			this.abortController = undefined;
+		}
+		this.dispatchEvent(new CustomEvent("close"));
+	}
+
+	private async reconnect(): Promise<void> {
+		this.reconnectAttempts++;
+		console.log(`Reconnecting in ${this.reconnectDelay}ms...`);
+		await new Promise((resolve) => setTimeout(resolve, this.reconnectDelay));
+		await this.stream();
 	}
 }

@@ -1,3 +1,5 @@
+// server.ts
+
 import type { BaseEvent, RiverStreamConfig } from "@/types/core";
 import { EventEmitter } from "node:events";
 
@@ -36,15 +38,13 @@ export class ServerRiverStream<
 		});
 	}
 
-	public emit_event<K extends keyof T>(event_type: K, data: T[K]): void {
-		console.log("Sending event", event_type);
-		const event_data = `event: ${String(event_type)}\ndata: ${JSON.stringify(
-			data,
-		)}\n\n`;
-		for (const client of this.clients) {
-			client.write(event_data);
-		}
-	}
+    public emit_event<K extends keyof T>(event_type: K, data: Omit<T[K], 'type'>): void {
+        console.log("Sending event", event_type);
+        const event_data = `event: ${String(event_type)}\ndata: ${JSON.stringify(data as T[K])}\n\n`;
+        for (const client of this.clients) {
+            client.write(event_data);
+        }
+    }
 
 	public headers(headers_override?: Record<string, string>): Headers {
 		const headers = new Headers({
