@@ -1,5 +1,5 @@
 {
-  "version": "0.0.3",
+  "version": "0.0.4",
   "name": "river.ts",
   "description": "Composable, declarative, and type-safe SSE Server-Sent Events",
   "repository": {

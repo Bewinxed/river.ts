@@ -1,7 +1,7 @@
 {
   "extends": "@total-typescript/tsconfig/tsc/dom/library", // For a library
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "tests"],
+  "exclude": ["node_modules", "dist", "tests", "src/examples"],
   "compilerOptions": {
     "paths": {
       "@/*": ["./src/*"]
