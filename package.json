@@ -1,0 +1,14 @@
+{
+  "name": "river.ts",
+  "module": "src/index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@total-typescript/tsconfig": "^1.0.4"
+  }
+}
