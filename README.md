@@ -1,14 +1,15 @@
-#![00171-1636846244](https://github.com/Bewinxed/river.ts/assets/9145989/091aba33-d05b-496e-a44b-aa59e9ff469d)
+![00171-1636846244](https://github.com/Bewinxed/river.ts/assets/9145989/091aba33-d05b-496e-a44b-aa59e9ff469d)
 # 🌊 river.ts | ✨ Composable, Typesafe SSE Events
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-4.3.5-blue.svg)](https://www.typescriptlang.org/)
+<!-- npm library link -->
+[![npm](https://img.shields.io/npm/v/river.ts)](https://www.npmjs.com/package/river.ts)
 
-RiverStream is a **Based** library for handling server-sent events (SSE) in TypeScript. It allows you to build a common interface for events, then call it from one place **Both** on server and client.
+river.ts is a **Based** library for handling server-sent events (SSE) in TypeScript. It allows you to build a common interface for events, then call it from one place **Both** on server and client.
 Currently compatible with express-like backends.
 
 ## 🌟 Features
-
 - 💡 Easy-to-use API for subscribing to and handling events
 - 🔄 Automatic reconnection with configurable delay
 - 🔌 Works with GET & Other HTTP Methods along with custom headers, body, etc...
@@ -17,12 +18,13 @@ Currently compatible with express-like backends.
 ## 📦 Installation
 ### Bun
 ```bash
-bun install riverstream
+bun install river.ts
 ```
 ### NPM (why tho)
 ```bash
-npm install riverstream
+npm install river.ts
 ```
+
 ## 🚀 Usage
 ### 🏗 Build your event map
 Chain commands together to build a map of events, you can add the types as type arguments or function arguments.

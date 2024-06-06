@@ -3,6 +3,10 @@ import { River } from "../../src/core/builder";
 import { serve } from "bun";
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 
+type Prettify<T> = {
+	[K in keyof T]: T[K];
+} & {};
+
 // Initialize the server before running the tests
 let server: ReturnType<typeof serve> | undefined;
 
@@ -80,7 +84,7 @@ describe("ServerRiverStream", () => {
 				console.log("on data", res);
 				expect(res.type).toBe("greeting");
 				expect(res.message).toEqual("Hello, World!");
-        clientStream.close()
+				clientStream.close();
 			})
 			.stream();
 	});

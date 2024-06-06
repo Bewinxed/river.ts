@@ -14,13 +14,54 @@ import {
  * @template T - The type of the event map.
  */
 export class RiverStream<T extends EventMap> extends EventTarget {
+	/**
+	 * An object to store event handlers.
+	 * Each key in the object corresponds to an event type, and its value is a function that handles that event.
+	 * @type {{ [K in keyof T]?: EventHandler<T[K]> }}
+	 */
 	public handlers: { [K in keyof T]?: EventHandler<T[K]> } = {};
+
+	/**
+	 * Stores the request information for event streaming.
+	 * @type {RequestInfo | undefined}
+	 */
 	private request_info?: RequestInfo;
+
+	/**
+	 * Stores the initialization options for event streaming requests.
+	 * @type {(RequestInit & { method: HTTPMethods }) | undefined}
+	 */
 	private request_init?: RequestInit & { method: HTTPMethods };
+
+	/**
+	 * Keeps track of the number of reconnection attempts made during event streaming.
+	 * @type {number}
+	 */
 	private reconnectAttempts = 0;
+
+	/**
+	 * The delay (in milliseconds) between each reconnection attempt during event streaming.
+	 * @type {number}
+	 */
 	private reconnectDelay = 1000;
+
+	/**
+	 * Represents an EventSource object for server-sent events. Used when performing GET requests.
+	 * @type {EventSource | undefined}
+	 */
 	private eventSource?: EventSource;
+
+	/**
+	 * An AbortController instance used to abort fetch requests during event streaming.
+	 * @type {AbortController | undefined}
+	 */
 	private abortController?: AbortController;
+
+	/**
+	 * A flag indicating whether the RiverStream instance is in the process of closing.
+	 * This helps prevent unnecessary reconnection attempts after closing.
+	 * @type {boolean}
+	 */
 	private closing = false;
 
 	/**
@@ -38,19 +79,19 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 	/**
 	 * Creates a new RiverStream instance.
 	 * @template T - The type of the event map.
-	 * @param events - The event map object.
-	 * @returns The RiverStream instance.
+	 * @param events - The event map object containing the event types and their data structures.
+	 * @returns A new RiverStream instance with the specified event map.
 	 */
 	public static init<T extends EventMap>(events: T): RiverStream<T> {
 		return new RiverStream<T>(events);
 	}
 
 	/**
-	 * Registers an event handler for the specified event type.
-	 * @template K - The key of the event type.
-	 * @param event_type - The event type key.
-	 * @param handler - The event handler function.
-	 * @returns The RiverStream instance.
+	 * Registers an event handler for a specific event type.
+	 * @template K - The key of the event type in the event map.
+	 * @param event_type - The event type to listen for, which must be a valid key in the event map.
+	 * @param handler - A callback function that handles events of the specified type and receives an argument containing the event data.
+	 * @returns The RiverStream instance with the added event listener, allowing method chaining.
 	 */
 	public on<K extends keyof T>(
 		event_type: K,
@@ -61,6 +102,7 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 				handler(event.detail as T[K]);
 			}
 		};
+		// Add an event listener for the specified event type using the provided callback function.
 		this.addEventListener(
 			event_type as string,
 			wrapped_handler as EventListener,
