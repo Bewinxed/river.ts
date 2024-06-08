@@ -26,6 +26,10 @@ export interface BaseEvent {
 	error: any;
 }
 
+export type Prettify<T> = {
+	[K in keyof T]: T[K];
+} & {};
+
 export type EventHandler<T extends BaseEvent> = (data: T) => void;
 
 export type EventMap = Record<string, BaseEvent>;

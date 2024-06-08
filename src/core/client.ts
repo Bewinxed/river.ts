@@ -6,6 +6,7 @@ import {
 	type EventHandler,
 	RiverStreamError,
 	type RiverStreamConfig,
+	type Prettify,
 } from "@/types/core";
 
 /**
@@ -95,7 +96,7 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 	 */
 	public on<K extends keyof T>(
 		event_type: K,
-		handler: (data: T[K]) => void,
+		handler: (data: Prettify<T[K]>) => void,
 	): this {
 		const wrapped_handler = (event: CustomEvent<T[K]>) => {
 			if (this.events[event_type]) {
