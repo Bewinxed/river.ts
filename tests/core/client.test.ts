@@ -27,7 +27,7 @@ beforeAll(async () => {
 						let count = 0;
 						const intervalId = setInterval(() => {
 							emitter.emit_event("greeting", {
-								
+								message: "Hello, World!",
 							});
 							count++;
 							if (count >= 5) {
