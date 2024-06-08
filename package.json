@@ -20,7 +20,8 @@
   "scripts": {
     "build": "parcel build",
     "watch": "parcel watch",
-    "test": "bun test"
+    "test": "bun test",
+    "publish": "npm version patch --no-git-tag-version && npm publish"
   },
   "files": [
     "src",
