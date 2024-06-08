@@ -4,19 +4,20 @@
 
 	let messages = $state<string[]>([]);
 
-	const client = events.client();
+	const client = events.client().prepare('http://localhost:5173/sse', {
+		method: 'GET'
+		// body: '{}'
+	});
 	console.log(client);
+	client.stream();
 	client
 		.on('test_msg', (e) => {
 			messages.push(e.message);
 		})
 		.on('test_json', (e) => {
 			messages.push('JSON message received');
-		})
-		.prepare('http://localhost:5173/sse', {
-			method: 'POST',
-			body: '{}'
 		});
+
 	onMount(async () => {
 		await client.stream();
 	});

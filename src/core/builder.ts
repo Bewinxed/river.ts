@@ -1,15 +1,8 @@
 // builder.ts
-import type { BaseEvent, EventHandler } from "../types/core";
-import { RiverStream } from "./client";
-import { ServerRiverStream } from "./server";
+import type { BaseEvent } from "../types/core";
 
 // biome-ignore lint/complexity/noBannedTypes: <explanation>
-export class River<T extends Record<string, BaseEvent> = {}> {
-	/**
-	 * A dictionary of event handlers. Each key corresponds to an event type and its associated handler function.
-	 */
-	private handlers: { [K in keyof T]?: EventHandler<T[K]> } = {};
-
+export class RiverEvents<T extends Record<string, BaseEvent> = {}> {
 	/**
 	 * Creates a new River instance with an optional initial event map.
 	 * @param events - The initial event map. Defaults to an empty object.
@@ -27,7 +20,10 @@ export class River<T extends Record<string, BaseEvent> = {}> {
 	public map_event<
 		K extends string,
 		E extends Omit<BaseEvent, "type"> = BaseEvent,
-	>(event_type: K, example_event?: E): River<T & Record<K, E & { type: K }>> {
+	>(
+		event_type: K,
+		example_event?: E,
+	): RiverEvents<T & Record<K, E & { type: K }>> {
 		if (example_event) {
 			// @ts-ignore
 			example_event.type = event_type;
@@ -35,7 +31,7 @@ export class River<T extends Record<string, BaseEvent> = {}> {
 		// @ts-ignore
 		this.events[event_type] = example_event as E & { type: K };
 
-		return new River<T & Record<K, E & { type: K }>>(
+		return new RiverEvents<T & Record<K, E & { type: K }>>(
 			this.events as T & Record<K, E & { type: K }>,
 		);
 	}
@@ -45,21 +41,5 @@ export class River<T extends Record<string, BaseEvent> = {}> {
 	 */
 	public build(): T {
 		return this.events;
-	}
-
-	/**
-	 * Initializes a new RiverStream instance for client-side usage with the current event map, allowing you to subscribe and emit events.
-	 * @returns {RiverStream<T>} The initialized RiverStream instance.
-	 */
-	public client(): RiverStream<T> {
-		return RiverStream.init<T>(this.events);
-	}
-
-	/**
-	 * Initializes a new ServerRiverStream instance for server-side usage with the current event map, allowing you to subscribe and emit events.
-	 * @returns {ServerRiverStream<T>} The initialized ServerRiverStream instance.
-	 */
-	public server(): ServerRiverStream<T> {
-		return new ServerRiverStream<T>(this.events);
 	}
 }

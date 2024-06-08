@@ -13,7 +13,7 @@ import {
  * It extends the EventTarget class and provides methods for event handling.
  * @template T - The type of the event map.
  */
-export class RiverStream<T extends EventMap> extends EventTarget {
+export class RiverClient<T extends EventMap> extends EventTarget {
 	/**
 	 * An object to store event handlers.
 	 * Each key in the object corresponds to an event type, and its value is a function that handles that event.
@@ -74,6 +74,7 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 		private config: RiverStreamConfig = {},
 	) {
 		super();
+		this.config = config;
 	}
 
 	/**
@@ -82,8 +83,8 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 	 * @param events - The event map object containing the event types and their data structures.
 	 * @returns A new RiverStream instance with the specified event map.
 	 */
-	public static init<T extends EventMap>(events: T): RiverStream<T> {
-		return new RiverStream<T>(events);
+	public static init<T extends EventMap>(events: T): RiverClient<T> {
+		return new RiverClient<T>(events);
 	}
 
 	/**
@@ -148,12 +149,13 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 		}
 
 		if (
+			this.request_init?.headers ||
 			(this.request_init?.method ?? "GET") !== "GET" ||
 			EventSource === undefined
 		) {
 			try {
 				this.abortController = new AbortController();
-				await this.startFetchStream();
+				await this.fetch_event_stream();
 			} catch (error) {
 				if (this.closing) {
 					return;
@@ -196,9 +198,10 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 		}
 	}
 
-	private async startFetchStream(): Promise<void> {
+	private async fetch_event_stream(): Promise<void> {
 		// biome-ignore lint/style/noNonNullAssertion: <explanation>
 		const response = await fetch(this.request_info!, {
+			headers: this.config.headers,
 			...this.request_init,
 			signal: this.abortController?.signal,
 		});

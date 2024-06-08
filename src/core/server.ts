@@ -1,12 +1,9 @@
 // server.ts
 
 import type { BaseEvent, RiverStreamConfig } from "@/types/core";
-const EventEmitter =
-	typeof window === "undefined"
-		? require("node:events").EventEmitter
-		: EventTarget;
+import { EventEmitter } from "node:events";
 
-export class ServerRiverStream<
+export class RiverEmitter<
 	T extends Record<string, BaseEvent>,
 > extends EventEmitter {
 	private clients = new Set<WritableStreamDefaultWriter>();
@@ -16,6 +13,8 @@ export class ServerRiverStream<
 		private config: RiverStreamConfig = {},
 	) {
 		super();
+		this.event_map = event_map;
+		this.config = config;
 	}
 
 	public register_client(client: WritableStreamDefaultWriter): void {
@@ -23,18 +22,25 @@ export class ServerRiverStream<
 			throw new Error("Client writer is undefined");
 		}
 
-		// write headers for event stream
-		client.write("Content-Type: text/event-stream\n\n");
-		// cors
-		client.write("Access-Control-Allow-Origin: *\n\n");
-		client.write(
-			"Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept",
-		);
-		// keep connection alive
-		client.write("Cache-Control: no-cache, no-transform\n\n");
-		client.write("Connection: keep-alive\n\n");
+		const headers = new Headers({
+			"Content-Type": "text/event-stream",
+			"Content-Encoding": "none",
+			"Cache-Control": "no-cache, no-transform",
+			Connection: "keep-alive",
+			"Access-Control-Allow-Origin": "*",
+			"Access-Control-Allow-Headers":
+				"Origin, X-Requested-With, Content-Type, Accept",
+			...this.config.headers,
+		});
+
+		for (const [key, value] of Object.entries(headers)) {
+			client.write(`${key}: ${value}\n`);
+		}
 
 		this.clients.add(client);
+
+		if (this.config.headers) {
+		}
 
 		client.closed.then(() => {
 			this.clients.delete(client);
@@ -69,9 +75,7 @@ export class ServerRiverStream<
 		return headers;
 	}
 
-	public stream(
-		callback: (emitter: ServerRiverStream<T>) => void,
-	): ReadableStream {
+	public stream(callback: (emitter: RiverEmitter<T>) => void): ReadableStream {
 		return new ReadableStream({
 			start: (controller) => {
 				const encoder = new TextEncoder();
