@@ -1,25 +1,22 @@
 {
   "extends": "@total-typescript/tsconfig/tsc/dom/library", // For a library
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "tests", "src/examples"],
+  // "files": ["src/index.ts"],
+  "exclude": ["node_modules", "dist", "tests", "examples"],
   "compilerOptions": {
     "paths": {
       "@/*": ["./src/*"]
       
     },
+    "outDir": "./dist",
     // Enable latest features
     "lib": ["ESNext", "DOM"],
     "target": "ESNext",
     "module": "ESNext",
     "moduleDetection": "force",
+    "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "allowJs": true,
-
-    // Bundler mode
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "noEmit": true,
 
     // Best practices
     "strict": true,

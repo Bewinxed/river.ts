@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Testing artifacts
+coverage/
+.nyc_output/
+
+# Build artifacts
+build/
+
+# Misc
+.env
+.DS_Store

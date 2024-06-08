@@ -1,6 +1,6 @@
 {
   "name": "sveltekit",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "scripts": {
     "dev": "vite dev",
@@ -24,6 +24,7 @@
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-svelte": "^2.36.0",
     "globals": "^15.0.0",
+    "parcel": "^2.12.0",
     "prettier": "^3.1.1",
     "prettier-plugin-svelte": "^3.1.2",
     "svelte": "^5.0.0-next.1",
@@ -36,6 +37,6 @@
   },
   "type": "module",
   "dependencies": {
-    "river.ts": "^0.0.4"
+    "river.ts": "^0.0.12"
   }
 }

@@ -1,13 +1,12 @@
 //
-import type { HTTPMethods } from "@/types/http.js";
+import type { HTTPMethods } from "../types/http.js";
 import {
 	type EventMap,
 	type BaseEvent,
 	type EventHandler,
 	RiverStreamError,
 	type RiverStreamConfig,
-	type Prettify,
-} from "@/types/core";
+} from "../types/core";
 
 /**
  * RiverStream class represents a client-side event stream.
@@ -96,7 +95,7 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 	 */
 	public on<K extends keyof T>(
 		event_type: K,
-		handler: (data: Prettify<T[K]>) => void,
+		handler: (data: T[K]) => void,
 	): this {
 		const wrapped_handler = (event: CustomEvent<T[K]>) => {
 			if (this.events[event_type]) {

@@ -1,5 +1,5 @@
 // builder.ts
-import type { BaseEvent, EventHandler } from "@/types/core";
+import type { BaseEvent, EventHandler } from "../types/core";
 import { RiverStream } from "./client";
 import { ServerRiverStream } from "./server";
 

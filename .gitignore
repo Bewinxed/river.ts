@@ -5,6 +5,7 @@ node_modules/
 dist/
 build/
 lib/
+.parcel-cache/
 
 # TypeScript cache
 *.tsbuildinfo

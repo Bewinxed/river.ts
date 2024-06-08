@@ -1,3 +1,3 @@
-export * from "@/core/builder";
+export * from "./core/builder";
 // export types
-export * from "@/types/core";
+export * from "./types/core";
