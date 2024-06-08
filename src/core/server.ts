@@ -9,11 +9,11 @@ export class RiverEmitter<
 	private clients = new Set<WritableStreamDefaultWriter>();
 
 	constructor(
-		private event_map: T,
+		private events: T,
 		private config: RiverConfig = {},
 	) {
 		super();
-		this.event_map = event_map;
+		this.events = events;
 		this.config = config;
 	}
 

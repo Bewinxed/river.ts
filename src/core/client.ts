@@ -77,14 +77,11 @@ export class RiverClient<T extends EventMap> extends EventTarget {
 		this.config = config;
 	}
 
-	/**
-	 * Creates a new River instance.
-	 * @template T - The type of the event map.
-	 * @param events - The event map object containing the event types and their data structures.
-	 * @returns A new River instance with the specified event map.
-	 */
-	public static init<T extends EventMap>(events: T): RiverClient<T> {
-		return new RiverClient<T>(events);
+	public static init<T extends EventMap>(
+		events: T,
+		config?: RiverConfig,
+	): RiverClient<T> {
+		return new RiverClient<T>(events, config);
 	}
 
 	/**
