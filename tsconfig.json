@@ -17,6 +17,8 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "allowJs": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
 
     // Best practices
     "strict": true,

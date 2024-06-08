@@ -1,7 +1,10 @@
 // server.ts
 
 import type { BaseEvent, RiverStreamConfig } from "@/types/core";
-import { EventEmitter } from "node:events";
+const EventEmitter =
+	typeof window === "undefined"
+		? require("node:events").EventEmitter
+		: EventTarget;
 
 export class ServerRiverStream<
 	T extends Record<string, BaseEvent>,
@@ -43,9 +46,9 @@ export class ServerRiverStream<
 		data: Omit<T[K], "type">,
 	): void {
 		console.log("Sending event", event_type);
-		const event_data = `event: ${String(event_type)}\ndata: ${JSON.stringify(
-			data as T[K],
-		)}\n\n`;
+		const event_data = `event: ${String(event_type)}\ndata: ${
+			data.data ? JSON.stringify(data.data as T[K]) : data.message
+		}\n\n`;
 		for (const client of this.clients) {
 			client.write(event_data);
 		}
@@ -54,6 +57,7 @@ export class ServerRiverStream<
 	public headers(headers_override?: Record<string, string>): Headers {
 		const headers = new Headers({
 			"Content-Type": "text/event-stream",
+			"Content-Encoding": "none",
 			"Cache-Control": "no-cache, no-transform",
 			Connection: "keep-alive",
 			"Access-Control-Allow-Origin": "*",

@@ -147,7 +147,10 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 			throw new RiverStreamError("Request information not set.");
 		}
 
-		if (this.request_init?.body || EventSource === undefined) {
+		if (
+			(this.request_init?.method ?? "GET") !== "GET" ||
+			EventSource === undefined
+		) {
 			try {
 				this.abortController = new AbortController();
 				await this.startFetchStream();
@@ -161,22 +164,29 @@ export class RiverStream<T extends EventMap> extends EventTarget {
 		} else {
 			this.eventSource = new EventSource(this.request_info.toString());
 
-			this.eventSource.onmessage = (event) => {
-				const baseEvent: BaseEvent = {
-					type: event.type,
-					message: event.data,
-					data: null,
-					error: null,
-				};
+			const custom_event_listener = (event: MessageEvent) => {
+				{
+					const baseEvent: BaseEvent = {
+						type: event.type,
+						message: event.data,
+						data: null,
+						error: null,
+					};
 
-				try {
-					baseEvent.data = JSON.parse(event.data);
-				} catch (error) {
-					// If parsing fails, the data is not JSON and will remain as a string in the `message` field
+					try {
+						baseEvent.data = JSON.parse(event.data);
+					} catch (error) {
+						// If parsing fails, the data is not JSON and will remain as a string in the `message` field
+					}
+
+					this.handle_event(baseEvent.type as keyof T, baseEvent as T[keyof T]);
 				}
-
-				this.handle_event(baseEvent.type as keyof T, baseEvent as T[keyof T]);
 			};
+
+			this.eventSource.onmessage = custom_event_listener;
+			for (const event_type in this.events) {
+				this.eventSource.addEventListener(event_type, custom_event_listener);
+			}
 
 			this.eventSource.onerror = (error) => {
 				console.error("EventSource error:", error);

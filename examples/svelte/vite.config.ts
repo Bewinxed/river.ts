@@ -1,9 +1,9 @@
 import { sveltekit } from "@sveltejs/kit/vite";
-import { defineConfig } from "vitest/config.js";
+// import { defineConfig } from "vitest/config.js";
 
-export default defineConfig({
+export default {
 	plugins: [sveltekit()],
 	test: {
-		include: ["src/**/*.{test,spec}.{js,ts}"],
+		include: ["./src/**/*.{test,spec}.{js,ts}"],
 	},
-});
+};

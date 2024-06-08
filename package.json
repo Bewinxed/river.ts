@@ -1,5 +1,5 @@
 {
-  "version": "0.0.13",
+  "version": "0.0.24",
   "name": "river.ts",
   "description": "Composable, declarative, and type-safe SSE Server-Sent Events",
   "repository": {
@@ -15,7 +15,6 @@
   "license": "MIT",
   "source": "src/index.ts",
   "main": "dist/main.js",
-  "module": "dist/module.js",
   "types": "dist/types.d.ts",
   "type": "module",
   "scripts": {
@@ -37,6 +36,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@total-typescript/tsconfig": "^1.0.4"
+    "@total-typescript/tsconfig": "^1.0.4",
+    "@types/node": "^20.14.2"
   }
 }
