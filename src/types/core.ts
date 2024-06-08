@@ -2,7 +2,7 @@
 /**
  * Custom error type for RiverStream errors.
  */
-export class RiverStreamError extends Error {
+export class RiverError extends Error {
 	constructor(message: string) {
 		super(message);
 		this.name = "RiverStreamError";
@@ -12,7 +12,7 @@ export class RiverStreamError extends Error {
 /**
  * Configuration options for RiverStream and ServerRiverStream.
  */
-export interface RiverStreamConfig {
+export interface RiverConfig {
 	headers?: Record<string, string>;
 	bufferSize?: number;
 }

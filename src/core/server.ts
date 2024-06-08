@@ -1,6 +1,6 @@
 // server.ts
 
-import type { BaseEvent, RiverStreamConfig } from "@/types/core";
+import type { BaseEvent, RiverConfig } from "@/types/core";
 import { EventEmitter } from "node:events";
 
 export class RiverEmitter<
@@ -10,11 +10,24 @@ export class RiverEmitter<
 
 	constructor(
 		private event_map: T,
-		private config: RiverStreamConfig = {},
+		private config: RiverConfig = {},
 	) {
 		super();
 		this.event_map = event_map;
 		this.config = config;
+	}
+
+	/**
+	 * Creates a new River instance.
+	 * @template T - The type of the event map.
+	 * @param events - The event map object containing the event types and their data structures.
+	 * @returns A new River instance with the specified event map.
+	 */
+	public static init<T extends Record<string, BaseEvent>>(
+		events: T,
+		config?: RiverConfig,
+	): RiverEmitter<T> {
+		return new RiverEmitter<T>(events, config);
 	}
 
 	public register_client(client: WritableStreamDefaultWriter): void {

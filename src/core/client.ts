@@ -4,12 +4,12 @@ import {
 	type EventMap,
 	type BaseEvent,
 	type EventHandler,
-	RiverStreamError,
-	type RiverStreamConfig,
+	RiverError,
+	type RiverConfig,
 } from "../types/core";
 
 /**
- * RiverStream class represents a client-side event stream.
+ * River class represents a client-side event stream.
  * It extends the EventTarget class and provides methods for event handling.
  * @template T - The type of the event map.
  */
@@ -58,30 +58,30 @@ export class RiverClient<T extends EventMap> extends EventTarget {
 	private abortController?: AbortController;
 
 	/**
-	 * A flag indicating whether the RiverStream instance is in the process of closing.
+	 * A flag indicating whether the River instance is in the process of closing.
 	 * This helps prevent unnecessary reconnection attempts after closing.
 	 * @type {boolean}
 	 */
 	private closing = false;
 
 	/**
-	 * Initializes a new instance of the RiverStream class.
+	 * Initializes a new instance of the River class.
 	 * @param events - The event map object.
-	 * @param config - The configuration options for the RiverStream instance.
+	 * @param config - The configuration options for the River instance.
 	 */
 	private constructor(
 		private events: T,
-		private config: RiverStreamConfig = {},
+		private config: RiverConfig = {},
 	) {
 		super();
 		this.config = config;
 	}
 
 	/**
-	 * Creates a new RiverStream instance.
+	 * Creates a new River instance.
 	 * @template T - The type of the event map.
 	 * @param events - The event map object containing the event types and their data structures.
-	 * @returns A new RiverStream instance with the specified event map.
+	 * @returns A new River instance with the specified event map.
 	 */
 	public static init<T extends EventMap>(events: T): RiverClient<T> {
 		return new RiverClient<T>(events);
@@ -92,7 +92,7 @@ export class RiverClient<T extends EventMap> extends EventTarget {
 	 * @template K - The key of the event type in the event map.
 	 * @param event_type - The event type to listen for, which must be a valid key in the event map.
 	 * @param handler - A callback function that handles events of the specified type and receives an argument containing the event data.
-	 * @returns The RiverStream instance with the added event listener, allowing method chaining.
+	 * @returns The River instance with the added event listener, allowing method chaining.
 	 */
 	public on<K extends keyof T>(
 		event_type: K,
@@ -125,10 +125,10 @@ export class RiverClient<T extends EventMap> extends EventTarget {
 	}
 
 	/**
-	 * Prepares the RiverStream instance with request information.
+	 * Prepares the River instance with request information.
 	 * @param input - The request info.
 	 * @param init - The request init options.
-	 * @returns The RiverStream instance.
+	 * @returns The River instance.
 	 */
 	public prepare(
 		input: RequestInfo,
@@ -145,7 +145,7 @@ export class RiverClient<T extends EventMap> extends EventTarget {
 	 */
 	public async stream(): Promise<void> {
 		if (!this.request_info) {
-			throw new RiverStreamError("Request information not set.");
+			throw new RiverError("Request information not set.");
 		}
 
 		if (
@@ -207,7 +207,7 @@ export class RiverClient<T extends EventMap> extends EventTarget {
 		});
 
 		if (!response.ok || !response.body) {
-			throw new RiverStreamError(
+			throw new RiverError(
 				`Failed to fetch: ${response.status} ${response.statusText}`,
 			);
 		}

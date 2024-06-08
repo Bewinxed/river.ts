@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { events } from './sse';
+	import { RiverStream } from 'river.ts';
 
 	let messages = $state<string[]>([]);
 
-	const client = events.client().prepare('http://localhost:5173/sse', {
+	const client = RiverStream.init(events).prepare('http://localhost:5173/sse', {
 		method: 'GET'
 		// body: '{}'
 	});

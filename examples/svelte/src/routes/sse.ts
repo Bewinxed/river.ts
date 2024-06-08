@@ -1,7 +1,6 @@
-import { River } from "river.ts";
-import * as river from "river.ts";
+import { RiverEvents } from "river.ts";
 
-export const events = new River()
+export const events = new RiverEvents()
 	.map_event("test_json", {
 		data: {
 			message: "This is a test SSE message.",
@@ -9,4 +8,5 @@ export const events = new River()
 	})
 	.map_event("test_msg", {
 		message: "This is a test SSE message.",
-	});
+	})
+	.build();

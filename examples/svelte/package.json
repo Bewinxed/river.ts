@@ -36,7 +36,7 @@
   },
   "type": "module",
   "dependencies": {
-    "river.ts": "0.0.25",
+    "river.ts": "0.0.26",
     "vite": "^5.2.13"
   }
 }
