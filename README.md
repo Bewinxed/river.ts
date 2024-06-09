@@ -29,9 +29,9 @@ npm install river.ts
 ### 🏗 Build your event map
 Chain commands together to build a map of events, you can add the types as type arguments or function arguments.
 ```typescript
-import { River } from 'river.ts';
+import { RiverEvents } from 'river.ts';
 
-const events = new River()
+const events = new RiverEvents()
 	.map_event("ping", {
 		message: "pong",
 	})
@@ -44,8 +44,11 @@ const events = new River()
 ```
 ### 🌠 On the Server
 ```typescript
+import { RiverEmitter } from 'river.ts/server';
+import {events} from './events';
+
 // init the server
-const server = events.server();
+const server = RiverEmitter.init(events)
 
 // Then, use .stream() as body init it using the `Response` object of your framework
 function GET(req: Request) {
@@ -77,11 +80,13 @@ function GET(req: Request) {
 ```
 ### 🚀 On the client
 ```typescript
+import { RiverClient } from 'river.ts/client';
+import {events} from './events';
 
 // On the client
-const client = events.client();
+const client = RiverClient.init(events)
 
-client
+await client
 	// add url, method, headers, etc (GET/POST/Etc, all work)
 	.prepare("http://localhost:3000/events", {
 		// custom headers

@@ -1,5 +1,5 @@
 {
-  "version": "0.0.61",
+  "version": "0.0.62",
   "name": "river.ts",
   "description": "Composable, declarative, and type-safe SSE Server-Sent Events",
   "repository": {
@@ -19,7 +19,8 @@
     "build": "tsc",
     "watch": "parcel watch",
     "test": "bun test",
-    "publish": "npm version patch --no-git-tag-version && npm publish"
+    "bump": "npm version patch --no-git-tag-version",
+    "publish": "npm publish"
   },
   "exports": {
     ".": {
@@ -46,7 +47,7 @@
   ],
   "devDependencies": {
     "@types/bun": "latest",
-    "typescript": "^5.0.0",
+    "typescript": "^5.4.5",
     "unbuild": "^2.0.0"
   },
   "dependencies": {
