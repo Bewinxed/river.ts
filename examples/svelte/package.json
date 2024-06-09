@@ -22,21 +22,21 @@
     "@types/eslint": "^8.56.10",
     "eslint": "^9.4.0",
     "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-svelte": "^2.39.0",
+    "eslint-plugin-svelte": "^2.39.2",
     "globals": "^15.4.0",
     "parcel": "^2.12.0",
     "prettier": "^3.3.1",
     "prettier-plugin-svelte": "^3.2.4",
-    "svelte": "^5.0.0-next.151",
+    "svelte": "^5.0.0-next.152",
     "svelte-check": "^3.8.0",
     "tslib": "^2.6.3",
     "typescript": "^5.4.5",
-    "typescript-eslint": "^8.0.0-alpha.28",
+    "typescript-eslint": "^8.0.0-alpha.29",
     "vitest": "^1.6.0"
   },
   "type": "module",
   "dependencies": {
-    "river.ts": "^0.0.60",
+    "river.ts": "^0.0.64",
     "vite": "^5.2.13"
   }
 }

@@ -126,7 +126,9 @@ After building the event map, You can either use `typeof events.{event}` or use 
 ```typescript
 import { InferEventType } from 'river.ts';
 
-type PingEvent = InferEventType<typeof events, "ping">;
+const events = ....build()
+type Events = typeof events
+type PingEvent = InferEventType<Events, "ping">;
 // {
 // 	message: string;
 // 	type: "ping";
