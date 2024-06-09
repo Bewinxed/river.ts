@@ -34,4 +34,4 @@ export type EventHandler<T extends BaseEvent> = (data: T) => void;
 
 export type EventMap = Record<string, BaseEvent>;
 
-export type InferEventType<T extends EventMap, K extends keyof T> = T[K] extends BaseEvent ? Prettify<T[K]> : `Event type ${K} not found`
+export type InferEventType<T extends EventMap, K extends keyof T> = T[K] extends BaseEvent ? Prettify<T[K]> : `Event not found, add it using .map_event (Did you do .build()?)`

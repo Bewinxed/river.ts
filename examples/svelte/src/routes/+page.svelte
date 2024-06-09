@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { events } from './sse';
+	import { } from 'river.ts';
 	import { RiverClient } from 'river.ts/client';
 
-	let messages = $state<(typeof events.test_json.data)[]>([]);
+	let messages = $state<()[]>([]);
 
 	const client = RiverClient.init(events).prepare('http://localhost:5173/sse', {
 		method: 'POST'
