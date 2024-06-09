@@ -1,20 +1,19 @@
 // tests/server.test.ts
-import { River } from "../../src/core/builder";
+import { InferEventType, RiverEvents } from "../../src";
+import { RiverEmitter} from "../../src/server";
+import { RiverClient} from "../../src/client";
 import { serve } from "bun";
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-
-type Prettify<T> = {
-	[K in keyof T]: T[K];
-} & {};
 
 // Initialize the server before running the tests
 let server: ReturnType<typeof serve> | undefined;
 
 beforeAll(async () => {
-	const events = new River().map_event("greeting", {
+	const events = new RiverEvents().map_event("greeting", {
 		message: "Hello, World!",
-	});
-	const serverStream = events.server();
+	}).build()
+
+	const serverStream = RiverEmitter.init(events);
 
 	// Create a Bun server
 	server = serve({
@@ -55,10 +54,10 @@ afterAll(async () => {
 
 describe("ServerRiverStream", () => {
 	it("should emit events", async () => {
-		const events = new River().map_event("greeting", {
-			message: "Hello, world!",
-		});
-		const clientStream = events.client();
+		const events = new RiverEvents().map_event("greeting", {
+			message: "Hello, World!",
+		}).build()
+		const clientStream = RiverClient.init(events);
 		// wait until server is ready for up to 5 seconds by pinging the server
 		await new Promise((resolve, reject) => {
 			const intervalId = setInterval(async () => {

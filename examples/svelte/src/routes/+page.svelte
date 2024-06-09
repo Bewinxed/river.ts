@@ -3,7 +3,7 @@
 	import { events } from './sse';
 	import { RiverClient } from 'river.ts/client';
 
-	let messages = $state<string[]>([]);
+	let messages = $state<(typeof events.test_json.data)[]>([]);
 
 	const client = RiverClient.init(events).prepare('http://localhost:5173/sse', {
 		method: 'POST'
@@ -12,10 +12,10 @@
 	console.log(client);
 	client
 		.on('test_msg', (e) => {
-			messages.push(e.message);
+			messages.push(e);
 		})
 		.on('test_json', (e) => {
-			messages.push('JSON message received');
+			messages.push({message: 'JSON message received'});
 		});
 
 	onMount(async () => {
@@ -25,6 +25,6 @@
 
 <div>
 	{#each messages as message}
-		<p>{message}</p>
+		<p>{message.message}</p>
 	{/each}
 </div>

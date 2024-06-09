@@ -40,7 +40,7 @@ const events = new RiverEvents()
 			{ id: 1, name: "Alice" },
 			{ id: 2, name: "Bob" },
 		],
-	});
+	}).build()
 ```
 ### 🌠 On the Server
 ```typescript
@@ -120,6 +120,25 @@ await client
 	})
 	// start the stream
 	.stream();
+```
+## 🔍 Type Safety
+After building the event map, You can either use `typeof events.{event}` or use the type InferEventType with the event name
+```typescript
+import { InferEventType } from 'river.ts';
+
+type PingEvent = InferEventType<typeof events, "ping">;
+// {
+// 	message: string;
+// 	type: "ping";
+// }
+
+const events: PingEvent[] = []
+
+// then you can push to it if you want and the types will be ok
+events.push({
+	message: "pong",
+	type: "ping",
+})
 ```
 
 ## 🎉 Contributing
