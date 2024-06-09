@@ -6,4 +6,7 @@ export default {
 	test: {
 		include: ["./src/**/*.{test,spec}.{js,ts}"],
 	},
+	server: {
+		host: "127.0.0.1"
+	}
 };

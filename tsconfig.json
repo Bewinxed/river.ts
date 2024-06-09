@@ -1,13 +1,13 @@
 {
   "extends": "@total-typescript/tsconfig/tsc/dom/library", // For a library
-  "include": ["src/**/*"],
-  // "files": ["src/index.ts"],
-  "exclude": ["node_modules", "dist", "tests", "examples"],
+  "include": ["src/"],
+  "exclude": ["!src/"],
   "compilerOptions": {
     "paths": {
       "@/*": ["./src/*"]
       
     },
+    "rootDir": "./src",
     "outDir": "./dist",
     // Enable latest features
     "lib": ["ESNext", "DOM"],

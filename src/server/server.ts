@@ -1,6 +1,6 @@
 // server.ts
 
-import type { BaseEvent, RiverConfig } from "@/types/core";
+import type { BaseEvent, RiverConfig } from "../types/core";
 import { EventEmitter } from "node:events";
 
 export class RiverEmitter<

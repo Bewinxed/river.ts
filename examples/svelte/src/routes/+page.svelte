@@ -1,16 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { events } from './sse';
-	import { RiverStream } from 'river.ts';
+	import { RiverClient } from 'river.ts/client';
 
 	let messages = $state<string[]>([]);
 
-	const client = RiverStream.init(events).prepare('http://localhost:5173/sse', {
-		method: 'GET'
+	const client = RiverClient.init(events).prepare('http://localhost:5173/sse', {
+		method: 'POST'
 		// body: '{}'
 	});
 	console.log(client);
-	client.stream();
 	client
 		.on('test_msg', (e) => {
 			messages.push(e.message);

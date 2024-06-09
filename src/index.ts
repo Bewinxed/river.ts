@@ -1,5 +1,3 @@
-export * from "./core/builder";
-export * from "./core/client";
-export * from "./core/server";
-// export types
+// src/client.ts
+export * from "./builder";
 export * from "./types/core";

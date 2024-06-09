@@ -6,7 +6,7 @@ import {
 	type EventHandler,
 	RiverError,
 	type RiverConfig,
-} from "../types/core";
+} from "../types/core.js";
 
 /**
  * River class represents a client-side event stream.
@@ -82,6 +82,11 @@ export class RiverClient<T extends EventMap> extends EventTarget {
 		config?: RiverConfig,
 	): RiverClient<T> {
 		return new RiverClient<T>(events, config);
+	}
+
+	// function to get return type of specific event
+	public event<K extends keyof T>(event_type: K): T[K] {
+		return this.events[event_type];
 	}
 
 	/**

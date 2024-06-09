@@ -1,5 +1,5 @@
 // builder.ts
-import type { BaseEvent } from "../types/core";
+import type { BaseEvent } from "./types/core";
 
 // biome-ignore lint/complexity/noBannedTypes: <explanation>
 export class RiverEvents<T extends Record<string, BaseEvent> = {}> {

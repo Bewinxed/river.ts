@@ -1,4 +1,4 @@
-import { RiverEmitter } from "river.ts";
+import { RiverEmitter } from "river.ts/server";
 import { events } from "../sse.js";
 
 export const POST = async (event) => {
