@@ -20,7 +20,8 @@
     "watch": "bunx unbuild watch",
     "test": "bun test",
     "bump": "npm version patch --no-git-tag-version",
-    "publish": "npm publish"
+    "publish": "npm publish",
+    "prepublishOnly": "npm run build"
   },
   "exports": {
     ".": {
