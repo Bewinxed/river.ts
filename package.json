@@ -22,6 +22,7 @@
     "bump": "npm version patch --no-git-tag-version",
     "publish": "npm publish",
     "prepublishOnly": "npm run build"
+
   },
   "exports": {
     ".": {
@@ -49,10 +50,11 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5.4.5",
-    "unbuild": "^2.0.0"
-  },
-  "dependencies": {
+    "unbuild": "^2.0.0",
     "@total-typescript/tsconfig": "^1.0.4",
     "@types/node": "^20.14.2"
+  },
+  "dependencies": {
+    
   }
 }

@@ -7,8 +7,8 @@
 	let messages = $state<InferEventType<typeof events, 'test_json'>['data'][]>([]);
 
 	const client = RiverClient.init(events).prepare('http://localhost:5173/sse', {
-		method: 'POST'
-		// body: '{}'
+		method: 'POST',
+		body: '{}'
 	});
 	console.log(client);
 	client
