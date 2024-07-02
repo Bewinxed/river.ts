@@ -1,37 +1,37 @@
 // core.ts
-/**
- * Custom error type for RiverStream errors.
- */
-export class RiverError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "RiverStreamError";
-	}
-}
 
-/**
- * Configuration options for RiverStream and ServerRiverStream.
- */
-export interface RiverConfig {
-	headers?: Record<string, string>;
-	bufferSize?: number;
+export class RiverError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RiverStreamError';
+  }
 }
 
 export interface BaseEvent {
-	type: string;
-	message?: string;
-	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-	data?: any;
-	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-	error?: any;
+  type: string;
+  message?: string;
+  data?: unknown;
+  error?: unknown;
+  stream?: boolean;
 }
-
-export type Prettify<T> = {
-	[K in keyof T]: T[K];
-} & {};
-
-export type EventHandler<T extends BaseEvent> = (data: T) => void;
 
 export type EventMap = Record<string, BaseEvent>;
 
-export type InferEventType<T extends EventMap, K extends keyof T> = T[K] extends BaseEvent ? Prettify<T[K]> : `Event not found, add it using .map_event (Did you do .build()?)`
+export interface RiverConfig {
+  headers?: Record<string, string>;
+  chunk_size?: number;
+}
+
+export type EventHandler<T> = (data: T) => void;
+
+export interface StreamOptions {
+  stream?: boolean;
+}
+
+// Existing types
+export type IterableSource<T> = Iterable<T> | AsyncIterable<T>;
+
+// New helper type to ensure data is iterable for streamed events
+type EnsureIterable<T, S extends boolean> = S extends true
+  ? T extends IterableSource<infer U> ? T : never
+  : T;

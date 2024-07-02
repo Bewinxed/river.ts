@@ -1,292 +1,224 @@
-//
-import type { HTTPMethods } from "../types/http.js";
-import {
-	type EventMap,
-	type BaseEvent,
-	type EventHandler,
-	RiverError,
-	type RiverConfig,
-} from "../types/core.js";
+// src/client/client.ts
 
-/**
- * River class represents a client-side event stream.
- * It extends the EventTarget class and provides methods for event handling.
- * @template T - The type of the event map.
- */
+import type { HTTPMethods } from '../types/http';
+import type {
+  BaseEvent,
+  EventMap,
+  RiverConfig,
+  EventHandler
+} from '../types/core';
+import { RiverError } from '../types/core';
+
 export class RiverClient<T extends EventMap> extends EventTarget {
-	/**
-	 * An object to store event handlers.
-	 * Each key in the object corresponds to an event type, and its value is a function that handles that event.
-	 * @type {{ [K in keyof T]?: EventHandler<T[K]> }}
-	 */
-	public handlers: { [K in keyof T]?: EventHandler<T[K]> } = {};
+  private request_info?: RequestInfo;
+  private request_init?: RequestInit & { method: HTTPMethods };
+  private reconnect_attempts = 0;
+  private reconnect_delay = 1000;
+  private event_source?: EventSource;
+  private abort_controller?: AbortController;
+  private closing = false;
+  private stream_buffers: { [K in keyof T]?: unknown[] } = {};
+  private custom_listeners: { [K in keyof T]?: Set<EventHandler<T[K]>> } = {};
 
-	/**
-	 * Stores the request information for event streaming.
-	 * @type {RequestInfo | undefined}
-	 */
-	private request_info?: RequestInfo;
+  private constructor(
+    private events: T,
+    private config: RiverConfig = { chunk_size: 1024 }
+  ) {
+    super();
+  }
 
-	/**
-	 * Stores the initialization options for event streaming requests.
-	 * @type {(RequestInit & { method: HTTPMethods }) | undefined}
-	 */
-	private request_init?: RequestInit & { method: HTTPMethods };
+  public static init<T extends EventMap>(
+    events: T,
+    config?: RiverConfig
+  ): RiverClient<T> {
+    return new RiverClient<T>(events, config);
+  }
 
-	/**
-	 * Keeps track of the number of reconnection attempts made during event streaming.
-	 * @type {number}
-	 */
-	private reconnectAttempts = 0;
+  public on<K extends keyof T>(
+    event_type: K,
+    handler: (
+      data: T[K]['stream'] extends true ? T[K]['data'] : T[K]['data']
+    ) => void
+  ): this {
+    if (!this.custom_listeners[event_type]) {
+      this.custom_listeners[event_type] = new Set();
+    }
+    const wrappedHandler: EventHandler<T[K]> = (event) => {
+      if (this.events[event_type]?.stream) {
+        handler(event.data as T[K]['data'][]);
+      } else {
+        handler(event.data as T[K]['data']);
+      }
+    };
+    this.custom_listeners[event_type]?.add(wrappedHandler);
+    return this;
+  }
 
-	/**
-	 * The delay (in milliseconds) between each reconnection attempt during event streaming.
-	 * @type {number}
-	 */
-	private reconnectDelay = 1000;
+  public off<K extends keyof T>(
+    event_type: K,
+    handler: EventHandler<T[K]>
+  ): this {
+    this.custom_listeners[event_type]?.delete(handler);
+    return this;
+  }
 
-	/**
-	 * Represents an EventSource object for server-sent events. Used when performing GET requests.
-	 * @type {EventSource | undefined}
-	 */
-	private eventSource?: EventSource;
+  private handle_event<K extends keyof T>(event_type: K, data: T[K]): void {
+    // convert to for of
+    for (const handler of this.custom_listeners[event_type] || []) {
+      handler(data);
+    }
+  }
 
-	/**
-	 * An AbortController instance used to abort fetch requests during event streaming.
-	 * @type {AbortController | undefined}
-	 */
-	private abortController?: AbortController;
+  public prepare(
+    input: RequestInfo,
+    init?: RequestInit & { method: HTTPMethods }
+  ): this {
+    this.request_info = input;
+    this.request_init = init;
+    return this;
+  }
 
-	/**
-	 * A flag indicating whether the River instance is in the process of closing.
-	 * This helps prevent unnecessary reconnection attempts after closing.
-	 * @type {boolean}
-	 */
-	private closing = false;
+  public async stream(): Promise<void> {
+    if (!this.request_info) {
+      throw new RiverError('Request information not set.');
+    }
 
-	/**
-	 * Initializes a new instance of the River class.
-	 * @param events - The event map object.
-	 * @param config - The configuration options for the River instance.
-	 */
-	private constructor(
-		private events: T,
-		private config: RiverConfig = {},
-	) {
-		super();
-		this.config = config;
-	}
+    if (
+      this.request_init?.headers ||
+      (this.request_init?.method ?? 'GET') !== 'GET' ||
+      typeof EventSource === 'undefined'
+    ) {
+      try {
+        this.abort_controller = new AbortController();
+        await this.fetch_event_stream();
+      } catch (error) {
+        if (this.closing) return;
+        console.error('Error during fetch stream:', (error as Error).message);
+        await this.reconnect();
+      }
+    } else {
+      this.event_source = new EventSource(this.request_info.toString());
+      this.setup_event_source();
+    }
+  }
 
-	public static init<T extends EventMap>(
-		events: T,
-		config?: RiverConfig,
-	): RiverClient<T> {
-		return new RiverClient<T>(events, config);
-	}
+  private setup_event_source(): void {
+    if (!this.event_source) return;
 
-	// function to get return type of specific event
-	public event<K extends keyof T>(event_type: K): T[K] {
-		return this.events[event_type];
-	}
+    const custom_event_listener = (event: MessageEvent): void => {
+      try {
+        const parsed_data = JSON.parse(event.data);
+        this.process_event(event.type as keyof T, parsed_data);
+      } catch (error) {
+        console.error('Error parsing event data:', error);
+      }
+    };
 
-	/**
-	 * Registers an event handler for a specific event type.
-	 * @template K - The key of the event type in the event map.
-	 * @param event_type - The event type to listen for, which must be a valid key in the event map.
-	 * @param handler - A callback function that handles events of the specified type and receives an argument containing the event data.
-	 * @returns The River instance with the added event listener, allowing method chaining.
-	 */
-	public on<K extends keyof T>(
-		event_type: K,
-		handler: (data: T[K]) => void,
-	): this {
-		const wrapped_handler = (event: CustomEvent<T[K]>) => {
-			if (this.events[event_type]) {
-				handler(event.detail as T[K]);
-			}
-		};
-		// Add an event listener for the specified event type using the provided callback function.
-		this.addEventListener(
-			event_type as string,
-			wrapped_handler as EventListener,
-		);
-		return this;
-	}
+    this.event_source.onmessage = custom_event_listener;
+    for (const event_type in this.events) {
+      this.event_source.addEventListener(event_type, custom_event_listener);
+    }
 
-	/**
-	 * Handles an event by dispatching a CustomEvent.
-	 * @template K - The key of the event type.
-	 * @param event_type - The event type key.
-	 * @param data - The event data.
-	 */
-	private handle_event<K extends keyof T>(event_type: K, data: T[K]): void {
-		const event = new CustomEvent<T[K]>(event_type as string, {
-			detail: data as T[K],
-		});
-		this.dispatchEvent(event);
-	}
+    this.event_source.onerror = (error): void => {
+      console.error('EventSource error:', error);
+      this.close();
+      this.reconnect();
+    };
+  }
 
-	/**
-	 * Prepares the River instance with request information.
-	 * @param input - The request info.
-	 * @param init - The request init options.
-	 * @returns The River instance.
-	 */
-	public prepare(
-		input: RequestInfo,
-		init?: RequestInit & { method: HTTPMethods },
-	): this {
-		this.request_info = input;
-		this.request_init = init;
-		return this;
-	}
+  private async fetch_event_stream(): Promise<void> {
+    if (!this.request_info) return;
 
-	/**
-	 * Starts the event streaming.
-	 * This uses EventSource on GET requests, and Fetch with bodyreader otherwise
-	 */
-	public async stream(): Promise<void> {
-		if (!this.request_info) {
-			throw new RiverError("Request information not set.");
-		}
+    const init: RequestInit = Object.assign({}, this.request_init, {
+      headers: Object.assign(
+        {},
+        this.config.headers,
+        this.request_init?.headers
+      ),
+      signal: this.abort_controller?.signal
+    });
 
-		if (
-			this.request_init?.headers ||
-			(this.request_init?.method ?? "GET") !== "GET" ||
-			EventSource === undefined
-		) {
-			try {
-				this.abortController = new AbortController();
-				await this.fetch_event_stream();
-			} catch (error) {
-				if (this.closing) {
-					return;
-				}
-				console.error("Error during fetch stream:", (error as Error)?.message);
-				await this.reconnect();
-			}
-		} else {
-			this.eventSource = new EventSource(this.request_info.toString());
+    const response = await fetch(this.request_info, init);
 
-			const custom_event_listener = (event: MessageEvent) => {
-				{
-					const baseEvent: BaseEvent = {
-						type: event.type,
-						message: event.data,
-						data: null,
-						error: null,
-					};
+    if (!response.ok || !response.body) {
+      throw new RiverError(
+        `Failed to fetch: ${response.status} ${response.statusText}`
+      );
+    }
 
-					try {
-						baseEvent.data = JSON.parse(event.data);
-					} catch (error) {
-						// If parsing fails, the data is not JSON and will remain as a string in the `message` field
-					}
+    const reader = response.body.getReader();
+    let buffer = '';
 
-					this.handle_event(baseEvent.type as keyof T, baseEvent as T[keyof T]);
-				}
-			};
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        console.debug('Stream finished');
+        break;
+      }
 
-			this.eventSource.onmessage = custom_event_listener;
-			for (const event_type in this.events) {
-				this.eventSource.addEventListener(event_type, custom_event_listener);
-			}
+      buffer += new TextDecoder().decode(value);
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
 
-			this.eventSource.onerror = (error) => {
-				console.error("EventSource error:", error);
-				this.close();
-				this.reconnect();
-			};
-		}
-	}
+      for (const event of events) {
+        if (event.trim() !== '') {
+          this.process_raw_event(event);
+        }
+      }
+    }
+  }
 
-	private async fetch_event_stream(): Promise<void> {
-		// biome-ignore lint/style/noNonNullAssertion: <explanation>
-		const response = await fetch(this.request_info!, {
-			headers: this.config.headers,
-			...this.request_init,
-			signal: this.abortController?.signal,
-		});
+  private process_raw_event(event: string): void {
+    const lines = event.trim().split('\n');
+    let event_type = '';
+    let data = '';
 
-		if (!response.ok || !response.body) {
-			throw new RiverError(
-				`Failed to fetch: ${response.status} ${response.statusText}`,
-			);
-		}
+    for (const line of lines) {
+      if (line.startsWith('event:')) {
+        event_type = line.slice(6).trim();
+      } else if (line.startsWith('data:')) {
+        data = line.slice(5).trim();
+      }
+    }
 
-		const reader = response.body.getReader();
-		let buffer = "";
+    if (event_type && data) {
+      try {
+        const parsed_data = JSON.parse(data);
+        this.process_event(event_type as keyof T, parsed_data);
+      } catch (error) {
+        console.error('Error parsing event data:', error);
+      }
+    }
+  }
 
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) {
-				console.log("Stream finished");
-				break;
-			}
+  private process_event<K extends keyof T>(event_type: K, data: unknown): void {
+    const event_config = this.events[event_type];
+    if (event_config?.stream) {
+      // For streamed events, data is already an array
+      this.handle_event(event_type, { data, stream: true } as T[K]);
+    } else {
+      // For non-streamed events, we don't wrap the data in an array
+      this.handle_event(event_type, { data, stream: false } as T[K]);
+    }
+  }
 
-			buffer += new TextDecoder().decode(value);
-			const events = buffer.split("\n\n");
-			buffer = events.pop() || "";
+  public close(): void {
+    this.closing = true;
+    if (this.event_source) {
+      this.event_source.close();
+      this.event_source = undefined;
+    }
+    if (this.abort_controller) {
+      this.abort_controller.abort();
+      this.abort_controller = undefined;
+    }
+    this.dispatchEvent(new CustomEvent('close'));
+  }
 
-			for (const event of events) {
-				if (event.trim() !== "") {
-					const lines = event.trim().split("\n");
-					let baseEvent: BaseEvent = {
-						type: "",
-						message: "",
-						data: null,
-						error: null,
-					};
-
-					for (const line of lines) {
-						if (line.startsWith("event:")) {
-							baseEvent.type = line.slice(6).trim();
-						} else if (line.startsWith("data:")) {
-							const data = line.slice(5).trim();
-							try {
-								const type = baseEvent.type;
-								baseEvent = JSON.parse(data);
-								baseEvent.type = type;
-							} catch (error) {
-								baseEvent.message = data;
-							}
-						} else if (line.startsWith("id:")) {
-							// Handle event ID if needed
-						} else if (line.startsWith("retry:")) {
-							const retryDelay = Number.parseInt(line.slice(6).trim(), 10);
-							if (!Number.isNaN(retryDelay)) {
-								this.reconnectDelay = retryDelay;
-							}
-						}
-					}
-
-					if (baseEvent.type === "error") {
-						baseEvent.error = baseEvent.data;
-					}
-
-					this.handle_event(baseEvent.type as keyof T, baseEvent as T[keyof T]);
-				}
-			}
-		}
-	}
-
-	public close(): void {
-		this.closing = true;
-		if (this.eventSource) {
-			this.eventSource.close();
-			this.eventSource = undefined;
-		}
-		if (this.abortController) {
-			this.abortController.abort();
-			this.abortController = undefined;
-		}
-		this.dispatchEvent(new CustomEvent("close"));
-	}
-
-	private async reconnect(): Promise<void> {
-		this.reconnectAttempts++;
-		console.log(`Reconnecting in ${this.reconnectDelay}ms...`);
-		await new Promise((resolve) => setTimeout(resolve, this.reconnectDelay));
-		await this.stream();
-	}
+  private async reconnect(): Promise<void> {
+    this.reconnect_attempts++;
+    console.warn(`Reconnecting in ${this.reconnect_delay}ms...`);
+    await new Promise((resolve) => setTimeout(resolve, this.reconnect_delay));
+    await this.stream();
+  }
 }

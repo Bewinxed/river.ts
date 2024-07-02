@@ -10,7 +10,7 @@
     "rootDir": "./src",
     "outDir": "./dist",
     // Enable latest features
-    "lib": ["ESNext", "DOM"],
+    "lib": ["ESNext", "DOM", "dom.iterable"],
     "target": "ESNext",
     "module": "ESNext",
     "moduleDetection": "force",
