@@ -8,6 +8,8 @@ coverage/
 # Build artifacts
 build/
 
+examples
+
 # Misc
 .env
 .DS_Store
