@@ -13,14 +13,13 @@ const events = new RiverEvents()
   .define_event('text_stream', { stream: true, data: '' as string })
   .define_event('number_event', {
     data: [] as number[],
-    stream: true
+    stream: true,
+    chunk_size: 100
   })
   .build();
 
 beforeAll(async () => {
-  const serverStream = RiverEmitter.init(events, {
-    chunk_size: 1
-  });
+  const serverStream = RiverEmitter.init(events, {});
 
   // Create a Bun server
   server = serve({
@@ -28,7 +27,7 @@ beforeAll(async () => {
     async fetch(req: Request) {
       if (req.url.endsWith('/events')) {
         return new Response(
-          serverStream.stream((emitter) => {
+          serverStream.stream(async (emitter) => {
             // Emit events periodically
             // let count = 0;
             // generate array of 1000 numbers
@@ -36,7 +35,9 @@ beforeAll(async () => {
             const text =
               "Ah, the beauty of Ahegao! It's an art style that truly embraces the essence of passion and ecstasy. Imagine a world where faces are canvases, and the artists paint their emotions with unrestrained fervor. Eyes wide open, mouths agape, cheeks flushed—every feature conveys the intensity of the moment. It's as if the pleasure is so overwhelming that it spills forth from their very souls.              ";
             emitter.emit_event('text_stream', text);
-            emitter.emit_event('number_event', numbers);
+            await emitter.emit_event('number_event', numbers);
+            console.log('closing');
+            await emitter.emit_event('close', {});
             // const intervalId = setInterval(() => {
             //   emitter.emit_event('greeting', {
             //     message: 'Hello, World!'
@@ -66,65 +67,66 @@ afterAll(async () => {
 });
 
 describe('ServerRiverStream', () => {
-  it('should emit events', async () => {
-    const events = new RiverEvents()
-      .define_event<'message', { data: { hello: 'world' } }>('message')
-      .define_event('text_stream', { stream: true, data: '' })
-      .define_event('number_event', {
-        data: [] as number[],
-        stream: true
-      })
-      .build();
+  it(
+    'should emit events',
+    async () => {
+      const events = new RiverEvents()
+        .define_event<'message', { data: { hello: 'world' } }>('message')
+        .define_event('text_stream', { stream: true, data: '' })
+        .define_event('message_event', { message: '' as string })
+        .define_event('number_event', {
+          data: [] as number[],
+          stream: true,
+          chunk_size: 100
+        })
+        .build();
 
-    const clientStream = RiverClient.init(events, {
-      chunk_size: 2
-    });
-    // wait until server is ready for up to 5 seconds by pinging the server
-    await new Promise((resolve, reject) => {
-      const intervalId = setInterval(async () => {
-        try {
-          await fetch('http://localhost:3000/events');
+      const clientStream = RiverClient.init(events, {});
+      // wait until server is ready for up to 5 seconds by pinging the server
+      await new Promise((resolve, reject) => {
+        const intervalId = setInterval(async () => {
+          try {
+            await fetch('http://localhost:3000/events');
+            clearInterval(intervalId);
+            resolve(undefined);
+          } catch (error) {
+            // ignore error
+          }
+        }, 1000);
+        setTimeout(() => {
           clearInterval(intervalId);
-          resolve(undefined);
-        } catch (error) {
-          // ignore error
-        }
-      }, 1000);
+          reject(new Error('Server did not start in time'));
+        }, 5000);
+      });
+
+      await clientStream
+        .prepare('http://localhost:3000/events', {
+          method: 'POST'
+        })
+        .on('message', (res) => {
+          expect(res.hello).toBe('world');
+          expect(res).toEqual({ hello: 'world' });
+          clientStream.close();
+        })
+        .on('message_event', (res) => {
+          // console.log(res.data);
+          expect(typeof res).toBe('string');
+        })
+        // .on('close', (res) => {
+        //   clientStream.close()
+        // })
+        .on('number_event', (res) => {
+          console.log(res);
+        })
+        .stream();
+
+      // run it for 10 seconds
       setTimeout(() => {
-        clearInterval(intervalId);
-        reject(new Error('Server did not start in time'));
-      }, 5000);
-    });
-
-    let text = '';
-    const numbers = [] as number[];
-
-    await clientStream
-      .prepare('http://localhost:3000/events', {
-        method: 'POST'
-      })
-      .on('message', (res) => {
-        expect(res.type).toBe('message');
-        expect(res.data).toEqual({ hello: 'world' });
         clientStream.close();
-      })
-      // .on('text_stream', (res) => {
-      //   text += res.data;
-      //   console.log(text);
-      //   // console.log(text.length / res.data.length);
-      //   // expect(res.data).toBeLessThanOrEqual(10);
-      //   // clientStream.close();
-      // })
-      .on('number_event', (res) => {
-        numbers.push(...res);
-        // console.log(res.data);
-        console.log(res);
-      })
-      .stream();
-
-    // run it for 10 seconds
-    setTimeout(() => {
-      clientStream.close();
-    }, 4000);
-  });
+      }, 10000);
+    },
+    {
+      timeout: 20000
+    }
+  );
 });

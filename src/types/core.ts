@@ -13,13 +13,13 @@ export interface BaseEvent {
   data?: unknown;
   error?: unknown;
   stream?: boolean;
+  chunk_size?: number;
 }
 
 export type EventMap = Record<string, BaseEvent>;
 
 export interface RiverConfig {
   headers?: Record<string, string>;
-  chunk_size?: number;
 }
 
 export type EventHandler<T> = (data: T) => void;
@@ -33,5 +33,19 @@ export type IterableSource<T> = Iterable<T> | AsyncIterable<T>;
 
 // New helper type to ensure data is iterable for streamed events
 type EnsureIterable<T, S extends boolean> = S extends true
-  ? T extends IterableSource<infer U> ? T : never
+  ? T extends IterableSource<infer U>
+    ? T
+    : never
   : T;
+
+export type EventData<T, K extends keyof T> = T[K] extends BaseEvent
+  ? T[K]['message'] extends string
+    ? T[K]['message']
+    : T[K]['stream'] extends true
+    ? T[K]['data'] extends (infer U)[]
+      ? U[]
+      : T[K]['data'] extends IterableSource<infer U>
+      ? IterableSource<U>
+      : never
+    : T[K]['data']
+  : never;

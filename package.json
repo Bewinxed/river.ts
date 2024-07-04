@@ -1,5 +1,5 @@
 {
-  "version": "1.0.2",
+  "version": "1.0.10",
   "name": "river.ts",
   "description": "Composable, declarative, and type-safe SSE Server-Sent Events",
   "repository": {
@@ -15,37 +15,31 @@
   "license": "MIT",
   "source": "src/index.ts",
   "type": "module",
+  "private": true,
   "scripts": {
-    "build": "bunx unbuild",
+    "build": "bunx unbuild && cat ./package.json | grep -v '\"private\":' > dist/package.json && cp README.md dist/README.md",
     "watch": "bunx unbuild watch",
     "test": "bun test",
     "bump": "npm version patch --no-git-tag-version",
-    "publish": "npm publish",
-    "prepublishOnly": "npm run build"
+    "publish": "cd ./dist && npm publish"
   },
   "exports": {
     ".": {
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "import": "./index.mjs",
+      "require": "./index.cjs",
+      "types": "./index.d.ts"
     },
     "./client": {
-      "import": "./dist/client/index.mjs",
-      "require": "./dist/client/index.cjs",
-      "types": "./dist/client/index.d.ts"
+      "import": "./client/index.mjs",
+      "require": "./client/index.cjs",
+      "types": "./client/index.d.ts"
     },
     "./server": {
-      "import": "./dist/server/index.mjs",
-      "require": "./dist/server/index.cjs",
-      "types": "./dist/server/index.d.ts"
+      "import": "./server/index.mjs",
+      "require": "./server/index.cjs",
+      "types": "./server/index.d.ts"
     }
   },
-  "files": [
-    "src",
-    "dist",
-    "LICENSE",
-    "README.md"
-  ],
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5.4.5",

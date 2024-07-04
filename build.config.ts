@@ -1,9 +1,9 @@
-import { defineBuildConfig } from "unbuild";
+import { defineBuildConfig } from 'unbuild';
 
 export default defineBuildConfig({
   // Change outDir, default is 'dist'
-  outDir: "dist",
-
+  outDir: 'dist',
+  failOnWarn: false,
   // Generates .d.ts declaration file
-  declaration: true,
+  declaration: true
 });

@@ -1,5 +1,3 @@
-// builder.ts
-
 import type { BaseEvent, IterableSource } from './types/core';
 import type { EventMap } from './types/core';
 
@@ -15,23 +13,29 @@ type EnsureIterable<T> = T extends IterableSource<unknown>
   : T extends string
   ? T
   : IterableErrorMessage;
-
-// biome-ignore lint/complexity/noBannedTypes: <explanation>
-export class RiverEvents<T extends EventMap = {}> {
-  constructor(private events: T = {} as T) {}
+type ReservedEventTypeMessage<K extends string> =
+  `ERROR: Event type ${K} is reserved.'`;
+export class RiverEvents<T extends EventMap = { close: BaseEvent }> {
+  constructor(
+    private events: T = {
+      close: { type: 'close' }
+    } as T & { close: BaseEvent }
+  ) {}
 
   public define_event<K extends string, E extends Omit<BaseEvent, 'type'>>(
-    event_type: K,
+    event_type: K extends 'close' ? ReservedEventTypeMessage<K> : K,
     config?: E &
       (E['stream'] extends true
-        ? { stream: true; data: EnsureIterable<E['data']> }
-        : { stream?: false })
+        ? { stream: true; data: EnsureIterable<E['data']>; chunk_size?: number }
+        : { stream?: false; chunk_size?: number })
   ): RiverEvents<Prettify<T & Record<K, Prettify<{ type: K } & E>>>> {
+    if (event_type === 'close') {
+      throw new Error(`ERROR: Event type ${event_type} is reserved.`);
+    }
     const new_events = {
       ...this.events,
       [event_type]: { type: event_type, ...config }
-    } as T & Record<K, E & { type: K }>;
-
+    } as unknown as T & Record<K, E & { type: K }>;
     return new RiverEvents<T & Record<K, E & { type: K }>>(new_events);
   }
 

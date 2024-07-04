@@ -13,7 +13,7 @@ export class RiverEmitter<T extends EventMap> extends EventEmitter {
 
   constructor(
     private events: T,
-    private config: RiverConfig = { chunk_size: 1024 }
+    private config: RiverConfig = { headers: {} }
   ) {
     super();
   }
@@ -69,11 +69,13 @@ export class RiverEmitter<T extends EventMap> extends EventEmitter {
     event_type: K,
     data: T[K]['data']
   ): Promise<void> {
+    const event_config = this.events[event_type];
+    const chunk_size = event_config?.chunk_size || 1024;
     const iterable = this.ensure_iterable(data);
     let chunk: unknown[] = [];
     for await (const item of iterable) {
       chunk.push(item);
-      if (chunk.length >= (this.config.chunk_size || 1024)) {
+      if (chunk.length >= chunk_size) {
         await this.emit_chunk(event_type, chunk);
         chunk = [];
       }
@@ -83,35 +85,45 @@ export class RiverEmitter<T extends EventMap> extends EventEmitter {
     }
   }
 
+  private is_async_iterable(value: unknown): value is AsyncIterable<unknown> {
+    return Symbol.asyncIterator in Object(value);
+  }
+
+  private is_iterable(value: unknown): value is Iterable<unknown> {
+    return Symbol.iterator in Object(value);
+  }
+
   private ensure_iterable(data: unknown): IterableSource<unknown> {
-    if (data != null && typeof data[Symbol.iterator] === 'function') {
-      return data as IterableSource<unknown>;
+    if (this.is_iterable(data)) {
+      return data;
     }
-    if (data != null && typeof data[Symbol.asyncIterator] === 'function') {
-      return data as IterableSource<unknown>;
+    if (this.is_async_iterable(data)) {
+      return data;
     }
     return [data][Symbol.iterator]();
   }
 
   // Add a new method to emit chunks
-private async emit_chunk<K extends keyof T>(
-  event_type: K,
-  chunk: unknown[]
-): Promise<void> {
-  const event_data = `event: ${String(event_type)}\ndata: ${JSON.stringify(chunk)}\n\n`;
-  const promises = Array.from(this.clients).map((client) =>
-    client.write(event_data)
-  );
-  await Promise.all(promises);
-}
+  private async emit_chunk<K extends keyof T>(
+    event_type: K,
+    chunk: unknown[]
+  ): Promise<void> {
+    const event_data = `event: ${String(event_type)}\ndata: ${JSON.stringify(
+      chunk
+    )}\n\n`;
+    const promises = Array.from(this.clients).map((client) =>
+      client.write(event_data)
+    );
+    await Promise.all(promises);
+  }
 
-// Modify the emit_single_event method
-private async emit_single_event<K extends keyof T>(
-  event_type: K,
-  data: unknown
-): Promise<void> {
-  await this.emit_chunk(event_type, [data]);
-}
+  // Modify the emit_single_event method
+  private async emit_single_event<K extends keyof T>(
+    event_type: K,
+    data: unknown
+  ): Promise<void> {
+    await this.emit_chunk(event_type, [data]);
+  }
 
   public headers(headers_override?: Record<string, string>): Headers {
     return new Headers({

@@ -8,7 +8,13 @@ coverage/
 # Build artifacts
 build/
 
-examples
+examples/
+
+.parcel-cache/
+
+.vscode/
+bun.lockb
+pnpm-lock.yaml
 
 # Misc
 .env
