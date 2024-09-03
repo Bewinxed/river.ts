@@ -10,72 +10,76 @@ import type {
 import { RiverError } from '../types/core';
 
 export class RiverClient<T extends EventMap> extends EventTarget {
-  private request_info?: RequestInfo;
-  private request_init?: RequestInit & { method: HTTPMethods };
-  private event_source?: EventSource;
-  private abort_controller?: AbortController;
+  private requestInfo?: RequestInfo;
+  private requestInit?: RequestInit & { method: HTTPMethods };
+  private eventSource?: EventSource;
+  private abortController?: AbortController;
   private closing = false;
-  public is_streaming = false;
-  private custom_listeners: { [K in keyof T]?: Set<EventHandler<T[K]>> } = {};
+  public isStreaming = false;
+  private customListeners: { [K in keyof T]?: Set<EventHandler<T[K]>> } = {};
 
   private constructor(
     private events: T,
-    private config: RiverConfig & { fetch_fn?: typeof fetch } = {
-      fetch_fn: fetch
+    private config: RiverConfig & {
+      fetchFn?: typeof fetch;
+      reconnect?: boolean;
+    } = {
+      fetchFn: fetch,
+      reconnect: false
     }
   ) {
     super();
-    // this.addEventListener('close', () => {
-    //   console.info("Stream closed by server via 'close' event");
-    //   this.close();
-    // });
-    if (!this.config.fetch_fn) {
-      this.config.fetch_fn = fetch;
+    if (!this.config.fetchFn) {
+      this.config.fetchFn = fetch;
     }
     this.on('close', () => {
       console.info("Stream closed by server via 'close' event");
       this.close();
     });
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => this.close());
+    }
   }
 
   public static init<T extends EventMap>(
     events: T,
-    config?: RiverConfig & { fetch_fn?: typeof fetch }
+    config?: RiverConfig & { fetchFn?: typeof fetch; reconnect?: boolean }
   ): RiverClient<T> {
     return new RiverClient<T>(events, config);
   }
 
   public on<K extends keyof T>(
-    event_type: K,
+    eventType: K,
     handler: (data: EventData<T, K>) => void
   ): this {
-    if (!this.custom_listeners[event_type]) {
-      this.custom_listeners[event_type] = new Set();
+    if (!this.customListeners[eventType]) {
+      this.customListeners[eventType] = new Set();
     }
 
-    const wrapped_handler: EventHandler<T[K]> = (event) => {
-      const base_event = event as BaseEvent;
-      if (base_event.message !== undefined) {
-        handler(base_event.message as EventData<T, K>);
-      } else if (base_event.stream && base_event.data !== undefined) {
-        handler(base_event.data as EventData<T, K>);
-      } else if (base_event.data !== undefined) {
-        handler(base_event.data as EventData<T, K>);
+    const wrappedHandler: EventHandler<T[K]> = (event) => {
+      const baseEvent = event as BaseEvent;
+      if (baseEvent.message !== undefined) {
+        handler(baseEvent.message as EventData<T, K>);
+      } else if (baseEvent.stream && baseEvent.data !== undefined) {
+        handler(baseEvent.data as EventData<T, K>);
+      } else if (baseEvent.data !== undefined) {
+        handler(baseEvent.data as EventData<T, K>);
       }
     };
 
     // biome-ignore lint/style/noNonNullAssertion: <explanation>
-    this.custom_listeners[event_type]!.add(wrapped_handler);
+    this.customListeners[eventType]!.add(wrappedHandler);
     return this;
   }
 
   public off<K extends keyof T>(
-    event_type: K,
+    eventType: K,
     handler: EventHandler<T[K]>
   ): this {
-    if (this.custom_listeners[event_type]) {
+    if (this.customListeners[eventType]) {
       // biome-ignore lint/style/noNonNullAssertion: <explanation>
-      this.custom_listeners[event_type]!.delete(handler);
+      this.customListeners[eventType]!.delete(handler);
     }
     return this;
   }
@@ -84,166 +88,154 @@ export class RiverClient<T extends EventMap> extends EventTarget {
     input: RequestInfo,
     init?: RequestInit & { method: HTTPMethods }
   ): this {
-    this.request_info = input;
-    this.request_init = init;
+    this.requestInfo = input;
+    this.requestInit = init;
     return this;
   }
 
   public async stream(): Promise<void> {
-    if (!this.request_info || this.is_streaming) {
+    if (!this.requestInfo || this.isStreaming) {
       return;
     }
 
-    this.is_streaming = true;
-    this.abort_controller = new AbortController();
+    this.isStreaming = true;
+    this.abortController = new AbortController();
 
     try {
-      if (this.should_use_event_source()) {
-        this.setup_event_source();
+      if (this.shouldUseEventSource()) {
+        this.setupEventSource();
       } else {
-        await this.fetch_event_stream();
+        await this.fetchEventStream();
       }
     } catch (error) {
       if (this.closing) {
         return;
       }
       console.error('Stream error:', error);
-      this.handle_stream_error(error);
+      this.handleStreamError(error);
     }
   }
 
-  private should_use_event_source(): boolean {
+  private shouldUseEventSource(): boolean {
     return (
-      !this.request_init?.headers &&
-      (this.request_init?.method ?? 'GET') === 'GET' &&
+      !this.requestInit?.headers &&
+      (this.requestInit?.method ?? 'GET') === 'GET' &&
       typeof EventSource !== 'undefined'
     );
   }
 
-  private setup_event_source(): void {
+  private setupEventSource(): void {
     // biome-ignore lint/style/noNonNullAssertion: <explanation>
-    this.event_source = new EventSource(this.request_info!.toString());
-    this.event_source.onmessage = this.handle_event_source_message.bind(this);
-    this.event_source.onerror = this.handle_event_source_error.bind(this);
+    this.eventSource = new EventSource(this.requestInfo!.toString());
+    this.eventSource.onmessage = this.handleEventSourceMessage.bind(this);
+    this.eventSource.onerror = this.handleEventSourceError.bind(this);
 
-    for (const event_type in this.events) {
-      this.event_source.addEventListener(
-        event_type,
-        this.handle_event_source_message.bind(this)
+    for (const eventType in this.events) {
+      this.eventSource.addEventListener(
+        eventType,
+        this.handleEventSourceMessage.bind(this)
       );
     }
   }
 
-  private handle_event_source_message(event: MessageEvent): void {
+  private handleEventSourceMessage(event: MessageEvent): void {
     try {
-      const parsed_data = JSON.parse(event.data);
-      this.process_event(event.type as keyof T, parsed_data);
+      const parsedData = JSON.parse(event.data);
+      this.processEvent(event.type as keyof T, parsedData);
     } catch (error) {
       console.error('Error parsing event data:', error);
     }
   }
 
-  private handle_event_source_error(error: Event): void {
+  private handleEventSourceError(error: Event): void {
     console.error('EventSource error:', error);
     this.close();
   }
 
-  private async fetch_event_stream(): Promise<void> {
-    const init: RequestInit = Object.assign({}, this.request_init);
+  private async fetchEventStream(): Promise<void> {
+    const init: RequestInit = Object.assign({}, this.requestInit);
     if (this.config.headers) {
       init.headers = Object.assign(
         {},
         this.config.headers,
-        this.request_init?.headers
+        this.requestInit?.headers
       );
     }
     // biome-ignore lint/style/noNonNullAssertion: <explanation>
-    init.signal = this.abort_controller!.signal;
+    init.signal = this.abortController!.signal;
 
-    // biome-ignore lint/style/noNonNullAssertion: <explanation>
-    const response = await this.config.fetch_fn!(this.request_info!, init);
+    try {
+      // biome-ignore lint/style/noNonNullAssertion: <explanation>
+      const response = await this.config.fetchFn!(this.requestInfo!, init);
 
-    if (!response.ok || !response.body) {
-      throw new RiverError(
-        `Failed to fetch: ${response.status} ${response.statusText}`
-      );
-    }
-
-    const reader = response.body.getReader();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
+      if (!response.ok || !response.body) {
+        throw new RiverError(
+          `Failed to fetch: ${response.status} ${response.statusText}`
+        );
       }
 
-      buffer += new TextDecoder().decode(value);
-      const events = buffer.split('\n\n');
-      buffer = events.pop() || '';
+      const reader = response.body.getReader();
+      let buffer = '';
 
-      for (const event of events) {
-        if (event.trim()) {
-          this.process_raw_event(event);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += new TextDecoder().decode(value);
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+
+        for (const event of events) {
+          if (event.trim()) {
+            this.processRawEvent(event);
+          }
         }
       }
+    } catch (error) {
+      this.handleStreamError(error);
     }
   }
 
-  private process_raw_event(event: string): void {
+  private processRawEvent(event: string): void {
     const parts = event.split('\n');
-    let event_type = '';
+    let eventType = '';
     let data = '';
 
     for (const part of parts) {
       if (part.startsWith('event:')) {
-        event_type = part.slice(6).trim();
+        eventType = part.slice(6).trim();
       } else if (part.startsWith('data:')) {
         data = part.slice(5).trim();
       }
     }
 
-    if (event_type && data) {
+    if (eventType && data) {
       try {
-        this.process_event(event_type as keyof T, JSON.parse(data));
+        this.processEvent(eventType as keyof T, JSON.parse(data));
       } catch (error) {
         console.error('Error parsing event data:', error);
       }
     }
   }
 
-  private process_event<K extends keyof T>(event_type: K, data: unknown): void {
-    const listeners = this.custom_listeners[event_type];
+  private processEvent<K extends keyof T>(eventType: K, data: unknown): void {
+    const listeners = this.customListeners[eventType];
     if (listeners) {
-      const event_config = this.events[event_type];
-      const chunk_size = event_config?.chunk_size || 1024;
-      const event_data = {
+      const eventConfig = this.events[eventType];
+      const chunkSize = eventConfig?.chunkSize || 1024;
+      const eventData = {
         data: data,
-        stream: event_config?.stream || false,
-        chunk_size: chunk_size
+        stream: eventConfig?.stream || false,
+        chunkSize: chunkSize
       } as T[K];
       for (const listener of listeners) {
-        listener(event_data);
+        listener(eventData);
       }
     }
   }
 
-  public close(): void {
-    this.closing = true;
-    this.is_streaming = false;
-    if (this.event_source) {
-      this.event_source.close();
-      this.event_source = undefined;
-    }
-    if (this.abort_controller) {
-      this.abort_controller.abort();
-      this.abort_controller = undefined;
-    }
-    this.dispatchEvent(new CustomEvent('close'));
-  }
-
-  private handle_stream_error(error: unknown): void {
-    this.is_streaming = false;
+  private handleStreamError(error: unknown): void {
+    this.isStreaming = false;
     if (error instanceof DOMException && error.name === 'AbortError') {
       console.log('Fetch aborted');
     } else if (
@@ -251,9 +243,29 @@ export class RiverClient<T extends EventMap> extends EventTarget {
       error.message.includes('Failed to fetch')
     ) {
       console.log('Network error: likely due to page navigation');
-    } else if (!this.closing) {
-      console.warn('Unexpected error, attempting to reconnect...');
-      setTimeout(() => this.stream(), 1000);
+    } else {
+      console.error('Stream error:', error);
+    }
+    this.close();
+  }
+
+  public close(): void {
+    if (this.closing) return;
+
+    this.closing = true;
+    this.isStreaming = false;
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = undefined;
+    }
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = undefined;
+    }
+    this.dispatchEvent(new CustomEvent('close'));
+
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('beforeunload', () => this.close());
     }
   }
 }

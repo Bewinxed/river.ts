@@ -22,7 +22,7 @@ export class RiverEvents<T extends EventMap = { close: BaseEvent }> {
     } as T & { close: BaseEvent }
   ) {}
 
-  public define_event<K extends string, E extends Omit<BaseEvent, 'type'>>(
+  public defineEvent<K extends string, E extends Omit<BaseEvent, 'type'>>(
     event_type: K extends 'close' ? ReservedEventTypeMessage<K> : K,
     config?: E &
       (E['stream'] extends true

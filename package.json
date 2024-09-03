@@ -1,5 +1,5 @@
 {
-  "version": "1.0.10",
+  "version": "1.0.21",
   "name": "river.ts",
   "description": "Composable, declarative, and type-safe SSE Server-Sent Events",
   "repository": {
@@ -21,7 +21,7 @@
     "watch": "bunx unbuild watch",
     "test": "bun test",
     "bump": "npm version patch --no-git-tag-version",
-    "publish": "cd ./dist && npm publish"
+    "pub": "cd ./dist && npm publish"
   },
   "exports": {
     ".": {

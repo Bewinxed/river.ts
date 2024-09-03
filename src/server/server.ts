@@ -1,5 +1,3 @@
-// src/server/server.ts
-
 import { EventEmitter } from 'node:events';
 import type {
   BaseEvent,
@@ -9,13 +7,12 @@ import type {
 } from '../types/core';
 
 export class RiverEmitter<T extends EventMap> extends EventEmitter {
-  private clients: Set<WritableStreamDefaultWriter> = new Set();
+  private config: RiverConfig;
+  private clients: Map<string, WritableStreamDefaultWriter> = new Map();
 
-  constructor(
-    private events: T,
-    private config: RiverConfig = { headers: {} }
-  ) {
+  constructor(private events: T, config: RiverConfig = { headers: {} }) {
     super();
+    this.config = config;
   }
 
   public static init<T extends EventMap>(
@@ -25,104 +22,76 @@ export class RiverEmitter<T extends EventMap> extends EventEmitter {
     return new RiverEmitter<T>(events, config);
   }
 
-  public register_client(client: WritableStreamDefaultWriter): void {
-    if (!client) {
-      throw new Error('Client writer is undefined');
-    }
-
-    const headers = new Headers({
-      'Content-Type': 'text/event-stream',
-      'Content-Encoding': 'none',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers':
-        'Origin, X-Requested-With, Content-Type, Accept',
-      ...this.config.headers
-    });
-
-    for (const [key, value] of headers.entries()) {
-      client.write(`${key}: ${value}\n`);
-    }
-
-    this.clients.add(client);
-
-    client.closed.then(() => {
-      this.clients.delete(client);
-    });
-  }
-
-  public async emit_event<K extends keyof T>(
+  private async emitEvent<K extends keyof T>(
+    writer: WritableStreamDefaultWriter,
     event_type: K,
     data: T[K]['data']
   ): Promise<void> {
     const event_config = this.events[event_type];
 
     if (event_config?.stream) {
-      await this.emit_stream_event(event_type, data);
+      await this.emitStreamEvent(writer, event_type, data);
     } else {
-      await this.emit_single_event(event_type, data);
+      await this.emitSingleEvent(writer, event_type, data);
     }
   }
 
-  private async emit_stream_event<K extends keyof T>(
+  private async emitStreamEvent<K extends keyof T>(
+    writer: WritableStreamDefaultWriter,
     event_type: K,
     data: T[K]['data']
   ): Promise<void> {
     const event_config = this.events[event_type];
-    const chunk_size = event_config?.chunk_size || 1024;
-    const iterable = this.ensure_iterable(data);
+    const chunk_size = event_config?.chunkSize || 1024;
+    const iterable = this.ensureIterable(data);
     let chunk: unknown[] = [];
     for await (const item of iterable) {
       chunk.push(item);
       if (chunk.length >= chunk_size) {
-        await this.emit_chunk(event_type, chunk);
+        await this.emitChunk(writer, event_type, chunk);
         chunk = [];
       }
     }
     if (chunk.length > 0) {
-      await this.emit_chunk(event_type, chunk);
+      await this.emitChunk(writer, event_type, chunk);
     }
   }
 
-  private is_async_iterable(value: unknown): value is AsyncIterable<unknown> {
+  private isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
     return Symbol.asyncIterator in Object(value);
   }
 
-  private is_iterable(value: unknown): value is Iterable<unknown> {
+  private isIterable(value: unknown): value is Iterable<unknown> {
     return Symbol.iterator in Object(value);
   }
 
-  private ensure_iterable(data: unknown): IterableSource<unknown> {
-    if (this.is_iterable(data)) {
+  private ensureIterable(data: unknown): IterableSource<unknown> {
+    if (this.isIterable(data)) {
       return data;
     }
-    if (this.is_async_iterable(data)) {
+    if (this.isAsyncIterable(data)) {
       return data;
     }
     return [data][Symbol.iterator]();
   }
 
-  // Add a new method to emit chunks
-  private async emit_chunk<K extends keyof T>(
+  private async emitChunk<K extends keyof T>(
+    writer: WritableStreamDefaultWriter,
     event_type: K,
     chunk: unknown[]
   ): Promise<void> {
     const event_data = `event: ${String(event_type)}\ndata: ${JSON.stringify(
       chunk
     )}\n\n`;
-    const promises = Array.from(this.clients).map((client) =>
-      client.write(event_data)
-    );
-    await Promise.all(promises);
+    await writer.write(event_data);
   }
 
-  // Modify the emit_single_event method
-  private async emit_single_event<K extends keyof T>(
+  private async emitSingleEvent<K extends keyof T>(
+    writer: WritableStreamDefaultWriter,
     event_type: K,
     data: unknown
   ): Promise<void> {
-    await this.emit_chunk(event_type, [data]);
+    await this.emitChunk(writer, event_type, [data]);
   }
 
   public headers(headers_override?: Record<string, string>): Headers {
@@ -139,28 +108,138 @@ export class RiverEmitter<T extends EventMap> extends EventEmitter {
     });
   }
 
-  public stream(callback: (emitter: RiverEmitter<T>) => void): ReadableStream {
+  // overload to receive only callback
+
+  public stream({
+    callback,
+    clientId: customClientId,
+    ondisconnect
+  }: {
+    callback: (
+      emit: <K extends keyof T>(
+        event_type: K,
+        data: T[K]['data']
+      ) => Promise<void>,
+      clientId: string
+    ) => void;
+    clientId?: string;
+    ondisconnect?: (clientId: string) => void;
+  }): ReadableStream {
     return new ReadableStream({
       start: (controller) => {
         const encoder = new TextEncoder();
         const { readable, writable } = new TransformStream();
         const writer = writable.getWriter();
 
-        this.register_client(writer);
+        const headers = this.headers();
+        for (const [key, value] of headers.entries()) {
+          writer.write(`${key}: ${value}\n`);
+        }
 
-        callback(this);
+        const clientId =
+          customClientId || Math.random().toString(36).slice(2, 9);
+        this.clients.set(clientId, writer);
 
-        readable.pipeTo(
-          new WritableStream({
-            write: (chunk) => {
-              controller.enqueue(encoder.encode(chunk));
-            },
-            close: () => {
-              controller.close();
+        const emit = async <K extends keyof T>(
+          event_type: K,
+          data: T[K]['data']
+        ) => {
+          await this.emitEvent(writer, event_type, data);
+        };
+
+        callback(emit, clientId);
+
+        writer.closed.then(() => {
+          this.clients.delete(clientId);
+          if (ondisconnect) {
+            ondisconnect(clientId);
+          }
+        });
+
+        readable
+          .pipeTo(
+            new WritableStream({
+              write: (chunk) => {
+                try {
+                  controller.enqueue(encoder.encode(chunk));
+                } catch (error) {
+                  console.error('Error enqueueing chunk:', error);
+                  controller.error(error);
+                }
+              },
+              close: () => {
+                this.clients.delete(clientId);
+                if (ondisconnect) {
+                  ondisconnect(clientId);
+                }
+                controller.close();
+              },
+              abort: (reason) => {
+                this.clients.delete(clientId);
+                if (ondisconnect) {
+                  ondisconnect(clientId);
+                }
+                console.debug(
+                  `Client ${clientId} disconnected ${
+                    reason ? `due to ${reason}` : ''
+                  }`
+                );
+                controller.error(reason);
+              }
+            })
+          )
+          .catch((error) => {
+            this.clients.delete(clientId);
+            if (ondisconnect) {
+              ondisconnect(clientId);
             }
-          })
-        );
+            // console.error('Error piping stream:', error);
+          });
+      },
+      cancel: async (reason) => {
+        // console.debug('Stream cancelled:', reason);
+        for (const [clientId, writer] of this.clients.entries()) {
+          if (ondisconnect) {
+            ondisconnect(clientId);
+          }
+          await writer.closed.then(() => writer.abort(reason));
+        }
       }
     });
+  }
+
+  // New method to broadcast to all connected clients
+  public async broadcast<K extends keyof T>(
+    event_type: K,
+    data: T[K]['data']
+  ): Promise<void> {
+    const promises = Array.from(this.clients.values()).map((writer) =>
+      this.emitEvent(writer, event_type, data)
+    );
+    await Promise.all(promises);
+  }
+
+  // New method to disconnect a specific client
+  public async disconnectClient(clientId: string): Promise<void> {
+    const writer = this.clients.get(clientId);
+    if (writer) {
+      await this.emitEvent(writer, 'close', {});
+      await writer.close();
+      this.clients.delete(clientId);
+    }
+  }
+
+  // New method to send an event to a specific client
+  public async sendToClient<K extends keyof T>(
+    clientId: string,
+    event_type: K,
+    data: T[K]['data']
+  ): Promise<void> {
+    const writer = this.clients.get(clientId);
+    if (writer) {
+      await this.emitEvent(writer, event_type, data);
+    } else {
+      console.error(`Client with ID ${clientId} not found`);
+    }
   }
 }

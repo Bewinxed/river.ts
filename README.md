@@ -1,155 +1,141 @@
 ![00171-1636846244](https://github.com/Bewinxed/river.ts/assets/9145989/091aba33-d05b-496e-a44b-aa59e9ff469d)
+
 # 🌊 river.ts | ✨ Composable, Typesafe SSE Events
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-4.3.5-blue.svg)](https://www.typescriptlang.org/)
-<!-- npm library link -->
 [![npm](https://img.shields.io/npm/v/river.ts)](https://www.npmjs.com/package/river.ts)
 
-river.ts is a **Based** library for handling server-sent events (SSE) in TypeScript. It allows you to build a common interface for events, then call it from one place **Both** on server and client.
-Currently compatible with express-like backends.
+river.ts is a powerful library for handling server-sent events (SSE) in TypeScript. It allows you to build a common interface for events, then use it consistently on both server and client sides.
+Compatible with express-like backends and modern frontend frameworks.
 
 ## 🌟 Features
-- 💡 Easy-to-use API for subscribing to and handling events
-- 🔄 Automatic reconnection with configurable delay
-- 🔌 Works with GET & Other HTTP Methods along with custom headers, body, etc...
-- 🛠️ Event listeners for events, with typesafe event handlers.
+
+- 💡 Easy-to-use API for defining, emitting, and handling events
+- 🔄 Automatic reconnection with configurable options
+- 🔌 Works with various HTTP methods and supports custom headers, body, etc.
+- 🛠️ Type-safe event handlers and payload definitions
+- 🚀 Streamlined setup for both server and client sides
 
 ## 📦 Installation
-### Bun
-```bash
-bun install river.ts
-```
-### NPM (why tho)
+
 ```bash
 npm install river.ts
+# or
+yarn add river.ts
+# or
+pnpm add river.ts
+# or
+bun add river.ts
 ```
 
 ## 🚀 Usage
-### 🏗 Build your event map
-Chain commands together to build a map of events, you can add the types as type arguments or function arguments.
+
+### 🏗 Define your event map
+
+Use the `RiverEvents` class to define your event structure:
+
 ```typescript
 import { RiverEvents } from 'river.ts';
 
 const events = new RiverEvents()
-	.map_event("ping", {
-		message: "pong",
-	})
-	.map_event("payload", {
-		data: [
-			{ id: 1, name: "Alice" },
-			{ id: 2, name: "Bob" },
-		],
-	}).build()
+  .defineEvent('ping', {
+    message: 'pong'
+  })
+  .defineEvent('payload', {
+    data: [
+      { id: 1, name: 'Alice' },
+      { id: 2, name: 'Bob' }
+    ],
+    stream: true
+  })
+  .build();
 ```
+
 ### 🌠 On the Server
+
+Use `RiverEmitter` to set up the server-side event emitter:
+
 ```typescript
 import { RiverEmitter } from 'river.ts/server';
-import {events} from './events';
+import { events } from './events';
 
-// init the server
-const server = RiverEmitter.init(events)
+const emitter = RiverEmitter.init(events);
 
-// Then, use .stream() as body init it using the `Response` object of your framework
-function GET(req: Request) {
-	return new Response(
-		server.stream((emitter) => {
-			// do stuff
-			// emit simple text message
-			emitter.emit_event("ping", { message: "pong" });
+function handleSSE(req: Request, res: Response) {
+  const stream = emitter.stream({
+    callback: async (emit) => {
+      await emit('ping', { message: 'pong' });
+      await emit('payload', {
+        data: [
+          { id: 1, name: 'Alice' },
+          { id: 2, name: 'Bob' }
+        ]
+      });
+    },
+    clientId: '...', // optional param to set a custom client ID
+    ondisconnect: (clientId) => {
+      // optional param to handle disconnections
+    }
+  });
 
-			// do more stuff
-			// emit complex json data
-			emitter.emit_event("payload", {
-				// type safe data
-				data: [
-					{ id: 1, name: "Alice" },
-					{ id: 2, name: "Bob" },
-				],
-			});
-		}),
-		{
-			// convenience method to set headers for text/event-stream
-			headers:
-				server.headers(
-					// optional, set your headers
-				),
-		},
-	);
+  return new Response(stream, {
+    headers: emitter.headers()
+  });
 }
 ```
-### 🚀 On the client
+
+### 🚀 On the Client
+
+Use `RiverClient` to set up the client-side event listener:
+
 ```typescript
 import { RiverClient } from 'river.ts/client';
-import {events} from './events';
+import { events } from './events';
 
-// On the client
-const client = RiverClient.init(events)
+const client = RiverClient.init(events);
 
-await client
-	// add url, method, headers, etc (GET/POST/Etc, all work)
-	.prepare("http://localhost:3000/events", {
-		// custom headers
-		method: "POST",
-		body: JSON.stringify({}),
-	})
-	// add event listeners
-	.on("ping", (res) => {
-		console.log("on data", res);
-		// typeof res
-		// {
-		// 	message: string;
-		// 	type: "ping";
-		// }
-	})
-	// add more event listeners
-	.on("payload", (res) => {
-		console.log("on data", res);
-		// typeof res
-		// {
-		// 	data: {
-		// 		id: number;
-		// 		name: string;
-		// 	}[];
-		// 	type: "payload";
-		// };
-		if (!res.data) {
-			// you can close it anytime if you assign it to a constant beforehand
-			client.close();
-		}
-	})
-	// start the stream
-	.stream();
+client
+  .prepare('http://localhost:3000/events', {
+    method: 'GET',
+    headers: {
+      // Add any custom headers here
+    }
+  })
+  .on('ping', (data) => {
+    console.log('Ping received:', data.message);
+  })
+  .on('payload', (data) => {
+    console.log('Payload received:', data);
+  })
+  .stream();
 ```
+
 ## 🔍 Type Safety
-After building the event map, You can either use `typeof events.{event}` or use the type InferEventType with the event name
+
+Leverage TypeScript's type system for type-safe event handling:
+
 ```typescript
 import { InferEventType } from 'river.ts';
 
-const events = ....build()
-type Events = typeof events
-type PingEvent = InferEventType<Events, "ping">;
+type Events = typeof events;
+type PingEvent = InferEventType<Events, 'ping'>;
 // {
-// 	message: string;
-// 	type: "ping";
+//   message: string;
+//   type: "ping";
 // }
 
-const events: PingEvent[] = []
-
-// then you can push to it if you want and the types will be ok
-events.push({
-	message: "pong",
-	type: "ping",
-})
+const pingEvents: PingEvent[] = [];
+pingEvents.push({
+  message: 'pong',
+  type: 'ping'
+});
 ```
 
-## Framework Examples
-<!-- link to /examples/svelte -->
-
-
-
 ## 🎉 Contributing
+
 Contributions are welcome! If you find any issues or have suggestions for improvements, please open an issue or submit a pull request.
 
 ## 📄 License
-Don't be a bozo
+
+This project is licensed under the MIT License.

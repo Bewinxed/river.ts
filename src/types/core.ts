@@ -13,7 +13,7 @@ export interface BaseEvent {
   data?: unknown;
   error?: unknown;
   stream?: boolean;
-  chunk_size?: number;
+  chunkSize?: number;
 }
 
 export type EventMap = Record<string, BaseEvent>;

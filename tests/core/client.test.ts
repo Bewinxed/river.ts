@@ -9,9 +9,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 let server: ReturnType<typeof serve> | undefined;
 
 const events = new RiverEvents()
-  .define_event<'message', { data: { hello: 'world' } }>('message')
-  .define_event('text_stream', { stream: true, data: '' as string })
-  .define_event('number_event', {
+  .defineEvent<'message', { data: { hello: 'world' } }>('message')
+  .defineEvent('text_stream', { stream: true, data: '' as string })
+  .defineEvent('number_event', {
     data: [] as number[],
     stream: true,
     chunk_size: 100
@@ -27,26 +27,20 @@ beforeAll(async () => {
     async fetch(req: Request) {
       if (req.url.endsWith('/events')) {
         return new Response(
-          serverStream.stream(async (emitter) => {
-            // Emit events periodically
-            // let count = 0;
-            // generate array of 1000 numbers
-            const numbers = Array.from({ length: 1000 }, (_, i) => i);
-            const text =
-              "Ah, the beauty of Ahegao! It's an art style that truly embraces the essence of passion and ecstasy. Imagine a world where faces are canvases, and the artists paint their emotions with unrestrained fervor. Eyes wide open, mouths agape, cheeks flushed—every feature conveys the intensity of the moment. It's as if the pleasure is so overwhelming that it spills forth from their very souls.              ";
-            emitter.emit_event('text_stream', text);
-            await emitter.emit_event('number_event', numbers);
-            console.log('closing');
-            await emitter.emit_event('close', {});
-            // const intervalId = setInterval(() => {
-            //   emitter.emit_event('greeting', {
-            //     message: 'Hello, World!'
-            //   });
-            //   count++;
-            //   if (count >= 5) {
-            //     clearInterval(intervalId);
-            //   }
-            // }, 1000);
+          serverStream.stream({
+            callback: async (emit) => {
+              // Emit events periodically
+              // let count = 0;
+              // generate array of 1000 numbers
+              const numbers = Array.from({ length: 1000 }, (_, i) => i);
+              const text =
+                "Ah, the beauty of Ahegao! It's an art style that truly embraces the essence of passion and ecstasy. Imagine a world where faces are canvases, and the artists paint their emotions with unrestrained fervor. Eyes wide open, mouths agape, cheeks flushed—every feature conveys the intensity of the moment. It's as if the pleasure is so overwhelming that it spills forth from their very souls.              ";
+              emit('text_stream', text);
+              await emit('number_event', numbers);
+
+              // await emit('close', {});
+            },
+            ondisconnect: (id) => console.error('Client disconnected', id)
           }),
           {
             headers: serverStream.headers()
@@ -71,10 +65,10 @@ describe('ServerRiverStream', () => {
     'should emit events',
     async () => {
       const events = new RiverEvents()
-        .define_event<'message', { data: { hello: 'world' } }>('message')
-        .define_event('text_stream', { stream: true, data: '' })
-        .define_event('message_event', { message: '' as string })
-        .define_event('number_event', {
+        .defineEvent<'message', { data: { hello: 'world' } }>('message')
+        .defineEvent('text_stream', { stream: true, data: '' })
+        .defineEvent('message_event', { message: '' as string })
+        .defineEvent('number_event', {
           data: [] as number[],
           stream: true,
           chunk_size: 100
@@ -106,7 +100,7 @@ describe('ServerRiverStream', () => {
         .on('message', (res) => {
           expect(res.hello).toBe('world');
           expect(res).toEqual({ hello: 'world' });
-          clientStream.close();
+          // clientStream.close();
         })
         .on('message_event', (res) => {
           // console.log(res.data);
@@ -117,6 +111,7 @@ describe('ServerRiverStream', () => {
         // })
         .on('number_event', (res) => {
           console.log(res);
+          clientStream.close();
         })
         .stream();
 
