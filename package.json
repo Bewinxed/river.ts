@@ -1,5 +1,5 @@
 {
-  "version": "1.0.23-test.0",
+  "version": "1.0.23-test.2",
   "name": "river.ts",
   "description": "Composable, declarative, and type-safe SSE Server-Sent Events",
   "repository": {
@@ -21,7 +21,10 @@
     "watch": "bunx unbuild watch",
     "test": "bun test",
     "bump": "npm version patch --no-git-tag-version",
-    "pub": "cd ./dist && npm publish"
+    "bump:test": "npm version prerelease --preid=test --no-git-tag-version",
+    "pub": "cd ./dist && npm publish",
+    "pub:test": "cd ./dist && npm publish --tag test",
+    "release:test": "npm run bump:test && npm run build && npm run pub:test"
   },
   "exports": {
     ".": {
@@ -38,6 +41,11 @@
       "import": "./server/index.mjs",
       "require": "./server/index.cjs",
       "types": "./server/index.d.ts"
+    },
+    "./websocket": {
+      "import": "./websocket/index.mjs",
+      "require": "./websocket/index.cjs",
+      "types": "./websocket/index.d.ts"
     }
   },
   "devDependencies": {
