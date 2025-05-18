@@ -1,0 +1,17 @@
+{
+  "outdir": "/reports",
+  "servers": [
+    {
+      "agent": "RiverSocketAdapter",
+      "url": "ws://172.17.0.1:9001",
+      "options": {
+        "failByDrop": false
+      }
+    }
+  ],
+  "cases": [
+    "*"
+  ],
+  "exclude-cases": [],
+  "exclude-agent-cases": {}
+}

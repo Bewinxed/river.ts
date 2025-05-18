@@ -55,3 +55,6 @@ coverage/
 
 # Windows specific files
 Thumbs.db
+
+# autobahn reports
+reports/
