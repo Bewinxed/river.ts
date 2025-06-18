@@ -1,4 +1,5 @@
 import type { Writable } from 'node:stream'; // For potential Node.js piping example later
+import type { EmitPayload } from '../types/core';
 
 // --- Placeholder Types (Replace with your actual definitions) ---
 // Make sure these align with your '../types/core' definitions
@@ -126,10 +127,16 @@ export class RiverEmitter<T extends EventMap> {
   private async emitStreamEvent<K extends keyof T>(
     writer: WritableStreamDefaultWriter,
     event_type: K,
-    data: T[K]['data'] // Expects the specific data type for the event
+    payload: EmitPayload<T, K> // Expects the specific payload type for the event
   ): Promise<void> {
     const event_config = this.eventDefinitions[event_type];
     const chunk_size = event_config?.chunkSize ?? 1024; // Default chunk size
+
+    // Extract data from payload for streaming - streaming events must have data property
+    const data = (payload as any).data;
+    if (data === undefined) {
+      throw new Error(`Stream event ${String(event_type)} requires a 'data' property`);
+    }
 
     // Infer the type of items within the data
     type Item = InferItemType<T[K]['data']>;
@@ -142,9 +149,11 @@ export class RiverEmitter<T extends EventMap> {
       for await (const item of iterable) {
         chunk.push(item);
         if (chunk.length >= chunk_size) {
+          // Create payload with chunked data, preserving other properties
+          const chunkPayload = { ...payload, data: chunk } as any;
           const event_data = `event: ${String(
             event_type
-          )}\ndata: ${JSON.stringify(chunk)}\n\n`;
+          )}\ndata: ${JSON.stringify(chunkPayload)}\n\n`;
           writeSuccess = await this.writeChunk(writer, event_data);
           if (!writeSuccess) break; // Stop iteration if write failed
           chunk = []; // Reset chunk
@@ -152,9 +161,11 @@ export class RiverEmitter<T extends EventMap> {
       }
       // Send any remaining items after the loop finishes (if write hasn't failed)
       if (writeSuccess && chunk.length > 0) {
+        // Create payload with remaining chunked data, preserving other properties
+        const finalPayload = { ...payload, data: chunk } as any;
         const event_data = `event: ${String(
           event_type
-        )}\ndata: ${JSON.stringify(chunk)}\n\n`;
+        )}\ndata: ${JSON.stringify(finalPayload)}\n\n`;
         await this.writeChunk(writer, event_data);
       }
     } catch (error) {
@@ -173,11 +184,11 @@ export class RiverEmitter<T extends EventMap> {
   private async emitSingleEvent<K extends keyof T>(
     writer: WritableStreamDefaultWriter,
     event_type: K,
-    data: T[K]['data'] // Expects the specific data type for the event
+    payload: EmitPayload<T, K> // Expects the specific payload type for the event
   ): Promise<void> {
-    // Send the single data payload, correctly JSON stringified.
+    // Send the structured payload, correctly JSON stringified.
     const event_data = `event: ${String(event_type)}\ndata: ${JSON.stringify(
-      data
+      payload
     )}\n\n`;
     await this.writeChunk(writer, event_data);
   }
@@ -189,15 +200,15 @@ export class RiverEmitter<T extends EventMap> {
   private async emitEventInternal<K extends keyof T>(
     writer: WritableStreamDefaultWriter,
     event_type: K,
-    data: T[K]['data'] // Expects the specific data type for the event
+    payload: EmitPayload<T, K> // Expects the specific payload type for the event
   ): Promise<void> {
     const event_config = this.eventDefinitions[event_type];
 
     // Check the definition provided during initialization
     if (event_config?.stream) {
-      await this.emitStreamEvent(writer, event_type, data);
+      await this.emitStreamEvent(writer, event_type, payload);
     } else {
-      await this.emitSingleEvent(writer, event_type, data);
+      await this.emitSingleEvent(writer, event_type, payload);
     }
   }
 
@@ -243,7 +254,7 @@ export class RiverEmitter<T extends EventMap> {
     callback: (
       emit: <K extends keyof T>(
         event_type: K,
-        data: T[K]['data']
+        payload: EmitPayload<T, K>
       ) => Promise<void>,
       clientId: string
     ) => void | Promise<void>; // Allow async setup
@@ -331,11 +342,11 @@ export class RiverEmitter<T extends EventMap> {
         // Typed emit function scoped to this client's writer
         const emit = async <K extends keyof T>(
           event_type: K,
-          data: T[K]['data']
+          payload: EmitPayload<T, K>
         ): Promise<void> => {
           // Only attempt to emit if the client is still considered connected
           if (emitterInstance.clients.has(clientId)) {
-            await emitterInstance.emitEventInternal(writer, event_type, data);
+            await emitterInstance.emitEventInternal(writer, event_type, payload);
           } else {
             console.warn(
               `RiverEmitter: Attempted to emit to disconnected client ${clientId}`
@@ -487,7 +498,7 @@ export class RiverEmitter<T extends EventMap> {
    */
   public async broadcast<K extends keyof T>(
     event_type: K,
-    data: T[K]['data']
+    payload: EmitPayload<T, K>
   ): Promise<void> {
     // Get a stable list of client entries [clientId, clientInfo] *before* awaiting
     const clientEntries = Array.from(this.clients.entries());
@@ -498,7 +509,7 @@ export class RiverEmitter<T extends EventMap> {
     const promises = clientEntries.map(
       (
         [, { writer }] // Only need writer for the promise
-      ) => this.emitEventInternal(writer, event_type, data)
+      ) => this.emitEventInternal(writer, event_type, payload)
     );
 
     const results = await Promise.allSettled(promises);
@@ -559,12 +570,12 @@ export class RiverEmitter<T extends EventMap> {
   public async sendToClient<K extends keyof T>(
     clientId: string,
     event_type: K,
-    data: T[K]['data']
+    payload: EmitPayload<T, K>
   ): Promise<void> {
     const clientInfo = this.clients.get(clientId);
     if (clientInfo) {
       try {
-        await this.emitEventInternal(clientInfo.writer, event_type, data);
+        await this.emitEventInternal(clientInfo.writer, event_type, payload);
       } catch (error) {
         console.error(
           `RiverEmitter: Error sending event ${String(

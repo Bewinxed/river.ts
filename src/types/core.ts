@@ -49,3 +49,14 @@ export type EventData<T, K extends keyof T> = T[K] extends BaseEvent
       : never
     : T[K]['data']
   : never;
+
+// Type to extract only user-defined properties (excluding stream and chunkSize)
+export type EmitPayload<T, K extends keyof T> = T[K] extends BaseEvent
+  ? Pick<T[K], {
+      [P in keyof T[K]]: P extends 'type' | 'stream' | 'chunkSize' 
+        ? never 
+        : T[K][P] extends undefined 
+          ? never 
+          : P
+    }[keyof T[K]]>
+  : never;

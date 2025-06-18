@@ -18,12 +18,14 @@ const events = new RiverEvents()
   })
   .build();
 
+let serverPort: number;
+
 beforeAll(async () => {
   const serverStream = RiverEmitter.init(events, {});
 
   // Create a Bun server
   server = serve({
-    port: 3000,
+    port: 0, // Use a random available port
     async fetch(req: Request) {
       if (req.url.endsWith('/events')) {
         return new Response(
@@ -35,8 +37,8 @@ beforeAll(async () => {
               const numbers = Array.from({ length: 1000 }, (_, i) => i);
               const text =
                 "Ah, the beauty of Ahegao! It's an art style that truly embraces the essence of passion and ecstasy. Imagine a world where faces are canvases, and the artists paint their emotions with unrestrained fervor. Eyes wide open, mouths agape, cheeks flushed—every feature conveys the intensity of the moment. It's as if the pleasure is so overwhelming that it spills forth from their very souls.              ";
-              emit('text_stream', text);
-              await emit('number_event', numbers);
+              emit('text_stream', { data: text });
+              await emit('number_event', { data: numbers });
 
               // await emit('close', {});
             },
@@ -50,7 +52,8 @@ beforeAll(async () => {
       return new Response('Not Found', { status: 404 });
     }
   });
-  console.log('server started');
+  serverPort = server.port;
+  console.log('server started on port', serverPort);
 });
 
 afterAll(async () => {
@@ -80,7 +83,7 @@ describe('ServerRiverStream', () => {
       await new Promise((resolve, reject) => {
         const intervalId = setInterval(async () => {
           try {
-            await fetch('http://localhost:3000/events');
+            await fetch(`http://localhost:${serverPort}/events`);
             clearInterval(intervalId);
             resolve(undefined);
           } catch (error) {
@@ -94,7 +97,7 @@ describe('ServerRiverStream', () => {
       });
 
       await clientStream
-        .prepare('http://localhost:3000/events', {
+        .prepare(`http://localhost:${serverPort}/events`, {
           method: 'POST'
         })
         .on('message', (res) => {

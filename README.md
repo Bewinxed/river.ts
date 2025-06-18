@@ -37,6 +37,7 @@ bun add river.ts
 
 ### 🏗 Define your event map
 
+
 Use the `RiverEvents` class to define your event structure:
 
 ```typescript
