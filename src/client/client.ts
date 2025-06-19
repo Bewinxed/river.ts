@@ -208,15 +208,8 @@ export class RiverClient<T extends EventMap> extends EventTarget {
   private processEvent<K extends keyof T>(eventType: K, data: unknown): void {
     const listeners = this.customListeners[eventType];
     if (listeners) {
-      const eventConfig = this.events[eventType];
-      const chunkSize = eventConfig?.chunkSize || 1024;
-      const eventData = {
-        data: data,
-        stream: eventConfig?.stream || false,
-        chunkSize: chunkSize
-      } as T[K];
       for (const listener of listeners) {
-        listener(eventData);
+        listener(data as T[K]);
       }
     }
   }
