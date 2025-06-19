@@ -9,7 +9,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 let server: ReturnType<typeof serve> | undefined;
 
 const events = new RiverEvents()
-  .defineEvent<'message', { data: { hello: 'world' } }>('message')
+  .defineEvent('message', {
+    message: 'Hello, World!'
+  })
   .defineEvent('text_stream', { stream: true, data: '' as string })
   .defineEvent('number_event', {
     data: [] as number[],
@@ -68,7 +70,9 @@ describe('ServerRiverStream', () => {
     'should emit events',
     async () => {
       const events = new RiverEvents()
-        .defineEvent<'message', { data: { hello: 'world' } }>('message')
+        .defineEvent('message', {
+          message: 'Hello, World!'
+        })
         .defineEvent('text_stream', { stream: true, data: '' })
         .defineEvent('message_event', { message: '' as string })
         .defineEvent('number_event', {
@@ -100,9 +104,8 @@ describe('ServerRiverStream', () => {
         .prepare(`http://localhost:${serverPort}/events`, {
           method: 'POST'
         })
-        .on('message', (res) => {
-          expect(res.hello).toBe('world');
-          expect(res).toEqual({ hello: 'world' });
+        .on('message', ({ message }) => {
+          expect(message).toBe('Hello, World!');
           // clientStream.close();
         })
         .on('message_event', (res) => {

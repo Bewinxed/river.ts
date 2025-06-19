@@ -3,9 +3,7 @@ import type {
   EventMap,
   RiverConfig,
   EventHandler,
-  IterableSource,
-  BaseEvent,
-  EventData
+  IterableSource
 } from '../types/core';
 import { RiverError } from '../types/core';
 
@@ -51,25 +49,14 @@ export class RiverClient<T extends EventMap> extends EventTarget {
 
   public on<K extends keyof T>(
     eventType: K,
-    handler: (data: EventData<T, K>) => void
+    handler: (data: T[K]) => void
   ): this {
     if (!this.customListeners[eventType]) {
       this.customListeners[eventType] = new Set();
     }
 
-    const wrappedHandler: EventHandler<T[K]> = (event) => {
-      const baseEvent = event as BaseEvent;
-      if (baseEvent.message !== undefined) {
-        handler(baseEvent.message as EventData<T, K>);
-      } else if (baseEvent.stream && baseEvent.data !== undefined) {
-        handler(baseEvent.data as EventData<T, K>);
-      } else if (baseEvent.data !== undefined) {
-        handler(baseEvent.data as EventData<T, K>);
-      }
-    };
-
     // biome-ignore lint/style/noNonNullAssertion: <explanation>
-    this.customListeners[eventType]!.add(wrappedHandler);
+    this.customListeners[eventType]!.add(handler as EventHandler<T[K]>);
     return this;
   }
 
