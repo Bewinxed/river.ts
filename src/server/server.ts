@@ -1,17 +1,8 @@
 import type { Writable } from 'node:stream'; // For potential Node.js piping example later
-import type { EmitPayload } from '../types/core';
+import type { EmitPayload, BaseEvent, EventMap } from '../types/core';
 
-// --- Placeholder Types (Replace with your actual definitions) ---
-// Make sure these align with your '../types/core' definitions
-export interface BaseEvent {
-  /** The expected type of the data payload for this event. */
-  data?: unknown;
-  /** If true, data can be an Iterable or AsyncIterable and will be chunked. */
-  stream?: boolean;
-  /** Size of chunks when stream=true. Defaults to 1024. */
-  chunkSize?: number;
-}
-export type EventMap = Record<string, BaseEvent>;
+// Re-export types that consumers might need
+export type { EmitPayload, BaseEvent, EventMap } from '../types/core';
 
 export interface RiverConfig {
   /** Default headers to merge with standard SSE headers. */

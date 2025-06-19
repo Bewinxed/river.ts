@@ -86,7 +86,7 @@ export class RiverClient<T extends EventMap> extends EventTarget {
 
   public prepare(
     input: RequestInfo,
-    init?: RequestInit & { method: HTTPMethods }
+    init: RequestInit & { method: HTTPMethods } = { method: 'GET' }
   ): this {
     this.requestInfo = input;
     this.requestInit = init;

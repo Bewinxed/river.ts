@@ -1,5 +1,5 @@
 {
-  "version": "1.1.1",
+  "version": "1.1.4",
   "name": "river.ts",
   "description": "Composable, declarative, and type-safe SSE Server-Sent Events",
   "repository": {
@@ -24,6 +24,7 @@
     "bump:test": "npm version prerelease --preid=test --no-git-tag-version",
     "pub": "cd ./dist && npm publish",
     "pub:test": "cd ./dist && npm publish --tag test",
+    "release": "npm run bump && npm run build && npm run pub",
     "release:test": "npm run bump:test && npm run build && npm run pub:test"
   },
   "exports": {

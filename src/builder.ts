@@ -14,7 +14,9 @@ type EnsureIterable<T> = T extends IterableSource<unknown>
   ? T
   : IterableErrorMessage;
 type ReservedEventTypeMessage<K extends string> =
-  `ERROR: Event type ${K} is reserved.'`;
+  K extends 'error' 
+    ? `ERROR: Event type 'error' is reserved. Using 'error' as an event type will immediately close the EventSource connection.`
+    : `ERROR: Event type '${K}' is reserved.`;
 export class RiverEvents<T extends EventMap = { close: BaseEvent }> {
   constructor(
     private events: T = {
@@ -23,13 +25,13 @@ export class RiverEvents<T extends EventMap = { close: BaseEvent }> {
   ) {}
 
   public defineEvent<K extends string, E extends Omit<BaseEvent, 'type'>>(
-    event_type: K extends 'close' ? ReservedEventTypeMessage<K> : K,
+    event_type: K extends 'close' | 'error' ? ReservedEventTypeMessage<K> : K,
     config?: E &
       (E['stream'] extends true
         ? { stream: true; data: EnsureIterable<E['data']>; chunk_size?: number }
         : { stream?: false; chunk_size?: number })
   ): RiverEvents<Prettify<T & Record<K, Prettify<{ type: K } & E>>>> {
-    if (event_type === 'close') {
+    if (event_type === 'close' || event_type === 'error') {
       throw new Error(`ERROR: Event type ${event_type} is reserved.`);
     }
     const new_events = {
