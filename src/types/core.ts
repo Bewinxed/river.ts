@@ -7,10 +7,28 @@ export class RiverError extends Error {
   }
 }
 
+export class RequestTimeoutError extends Error {
+  constructor(
+    public type: string,
+    public timeout: number
+  ) {
+    super(`Request '${type}' timed out after ${timeout}ms`);
+    this.name = 'RequestTimeoutError';
+  }
+}
+
+export class WebSocketClosedError extends Error {
+  constructor() {
+    super('WebSocket closed while request was pending');
+    this.name = 'WebSocketClosedError';
+  }
+}
+
 export interface BaseEvent {
   type: string;
   message?: string;
   data?: unknown;
+  response?: unknown; // Response type for request/response patterns
   error?: unknown;
   stream?: boolean;
   chunkSize?: number;
@@ -48,6 +66,18 @@ export type EventData<T, K extends keyof T> = T[K] extends BaseEvent
       ? IterableSource<U>
       : never
     : T[K]['data']
+  : never;
+
+/**
+ * Extracts the response type for request/response patterns.
+ * Falls back to EventData<T, K> if no explicit response type is defined.
+ */
+export type ResponseData<T, K extends keyof T> = T[K] extends BaseEvent
+  ? T[K]['response'] extends undefined
+    ? EventData<T, K> // Fall back to event data type if no response defined
+    : T[K]['response'] extends never
+    ? EventData<T, K> // Fall back if response is never
+    : T[K]['response']
   : never;
 
 // Type to extract only user-defined properties (excluding stream and chunkSize)
