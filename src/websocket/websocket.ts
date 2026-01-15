@@ -1,16 +1,26 @@
 // src/websocket/adapter.ts
 import type { EventMap, EventData } from '../types/core';
+import { RequestTimeoutError, WebSocketClosedError } from '../types/core';
 
 /**
  * Environment-agnostic WebSocket adapter
  * Can be plugged into existing WebSocket implementations
  */
+/** Pending request tracking for request/response semantics */
+interface PendingRequest {
+  resolve: (data: unknown) => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 export class RiverSocketAdapter<T extends EventMap> {
   private events: T;
   private eventHandlers: {
     [K in keyof T]?: Set<(data: EventData<T, K>, metadata?: any) => void>;
   } = {};
   private debug: boolean = false;
+  private pendingRequests = new Map<string, PendingRequest>();
+  private requestIdCounter = 0;
 
   constructor(events: T, options: { debug: boolean } = { debug: false }) {
     this.events = events;
@@ -85,7 +95,16 @@ export class RiverSocketAdapter<T extends EventMap> {
         // Try to parse as JSON, but don't fail if not valid JSON
         try {
           const parsed = JSON.parse(message);
-          const { type, data } = parsed;
+          const { type, data, id } = parsed;
+
+          // Check if this is a response to a pending request
+          if (id && typeof id === 'string' && this.pendingRequests.has(id)) {
+            const pending = this.pendingRequests.get(id)!;
+            this.pendingRequests.delete(id);
+            clearTimeout(pending.timeout);
+            pending.resolve(data);
+            return;
+          }
 
           // Only dispatch if we have a valid type
           if (
@@ -150,6 +169,89 @@ export class RiverSocketAdapter<T extends EventMap> {
       console.error('Error sending message:', error);
       return false;
     }
+  }
+
+  /**
+   * Generate a unique request ID
+   */
+  private generateRequestId(): string {
+    // Use crypto.randomUUID if available, otherwise fall back to counter + timestamp
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return `req-${Date.now()}-${++this.requestIdCounter}`;
+  }
+
+  /**
+   * Send a message and wait for a response with matching id.
+   * Implements RPC-style request/response semantics over WebSocket.
+   *
+   * @param type - Event type
+   * @param data - Event payload
+   * @param sendFn - Function to send the message (e.g., ws.send)
+   * @param timeout - Timeout in ms (default: 30000)
+   * @returns Promise that resolves with response data
+   * @throws RequestTimeoutError if no response within timeout
+   * @throws WebSocketClosedError if WebSocket closes while request is pending
+   */
+  public request<TResponse = unknown, K extends keyof T = keyof T>(
+    type: K,
+    data: T[K]['data'],
+    sendFn: (message: string) => void,
+    timeout: number = 30000
+  ): Promise<TResponse> {
+    const id = this.generateRequestId();
+
+    return new Promise<TResponse>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.pendingRequests.delete(id);
+        reject(new RequestTimeoutError(String(type), timeout));
+      }, timeout);
+
+      this.pendingRequests.set(id, {
+        resolve: resolve as (data: unknown) => void,
+        reject,
+        timeout: timeoutId
+      });
+
+      try {
+        const message = JSON.stringify({ type, data, id });
+        if (this.debug) {
+          console.log('Sending request:', message.substring(0, 100));
+        }
+        sendFn(message);
+      } catch (error) {
+        this.pendingRequests.delete(id);
+        clearTimeout(timeoutId);
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * Clear all pending requests (e.g., when WebSocket closes)
+   * Should be called when the WebSocket connection is closed.
+   */
+  public clearPendingRequests(): void {
+    for (const [id, pending] of this.pendingRequests) {
+      clearTimeout(pending.timeout);
+      pending.reject(new WebSocketClosedError());
+    }
+    this.pendingRequests.clear();
+  }
+
+  /**
+   * Get the number of pending requests
+   */
+  public getPendingRequestCount(): number {
+    return this.pendingRequests.size;
+  }
+
+  /**
+   * Check if there are any pending requests
+   */
+  public hasPendingRequests(): boolean {
+    return this.pendingRequests.size > 0;
   }
 
   /**

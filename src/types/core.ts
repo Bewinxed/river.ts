@@ -7,6 +7,23 @@ export class RiverError extends Error {
   }
 }
 
+export class RequestTimeoutError extends Error {
+  constructor(
+    public type: string,
+    public timeout: number
+  ) {
+    super(`Request '${type}' timed out after ${timeout}ms`);
+    this.name = 'RequestTimeoutError';
+  }
+}
+
+export class WebSocketClosedError extends Error {
+  constructor() {
+    super('WebSocket closed while request was pending');
+    this.name = 'WebSocketClosedError';
+  }
+}
+
 export interface BaseEvent {
   type: string;
   message?: string;
