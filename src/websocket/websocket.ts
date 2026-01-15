@@ -190,11 +190,11 @@ export class RiverSocketAdapter<T extends EventMap> {
    * @param data - Event payload
    * @param sendFn - Function to send the message (e.g., ws.send)
    * @param timeout - Timeout in ms (default: 30000)
-   * @returns Promise that resolves with response data
+   * @returns Promise that resolves with response data (defaults to EventData<T, K>)
    * @throws RequestTimeoutError if no response within timeout
    * @throws WebSocketClosedError if WebSocket closes while request is pending
    */
-  public request<TResponse = unknown, K extends keyof T = keyof T>(
+  public request<K extends keyof T, TResponse = EventData<T, K>>(
     type: K,
     data: T[K]['data'],
     sendFn: (message: string) => void,
