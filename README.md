@@ -206,7 +206,7 @@ const server = Bun.serve({
 
 ### 📡 Request/Response Pattern (RPC-style)
 
-The WebSocket adapter also supports RPC-style request/response semantics using the `request()` method:
+The WebSocket adapter supports RPC-style request/response semantics using the `request()` method. You can define both request (`data`) and response types in your event definitions:
 
 ```typescript
 import { RiverEvents } from 'river.ts';
@@ -216,13 +216,19 @@ import {
   WebSocketClosedError
 } from 'river.ts/websocket';
 
-// Define your events
+// Define events with explicit request (data) and response types
 const events = new RiverEvents()
   .defineEvent('instance.spawn', {
-    data: {} as { cwd: string; model?: string }
+    data: {} as { cwd: string; model?: string },
+    response: {} as { instanceId: string; status: 'created' | 'error' }
   })
   .defineEvent('task.execute', {
-    data: {} as { taskId: string; params: Record<string, unknown> }
+    data: {} as { taskId: string; params: Record<string, unknown> },
+    response: {} as { result: unknown; executionTime: number }
+  })
+  // Events without explicit response fall back to data type
+  .defineEvent('ping', {
+    data: {} as { timestamp: number }
   })
   .build();
 
@@ -241,16 +247,18 @@ ws.onclose = () => {
   adapter.clearPendingRequests();
 };
 
-// Make an RPC-style request and await the response
+// Make an RPC-style request - response type is automatically inferred!
 async function spawnInstance(cwd: string) {
   try {
-    const response = await adapter.request<{ instanceId: string }>(
+    const response = await adapter.request(
       'instance.spawn',
       { cwd },
       (msg) => ws.send(msg),
       10000 // 10 second timeout (default: 30000ms)
     );
+    // response is typed as { instanceId: string; status: 'created' | 'error' }
     console.log('Instance spawned:', response.instanceId);
+    console.log('Status:', response.status);
     return response;
   } catch (error) {
     if (error instanceof RequestTimeoutError) {
@@ -267,6 +275,7 @@ const [instance1, instance2] = await Promise.all([
   adapter.request('instance.spawn', { cwd: '/app1' }, (msg) => ws.send(msg)),
   adapter.request('instance.spawn', { cwd: '/app2' }, (msg) => ws.send(msg))
 ]);
+// Both are typed as { instanceId: string; status: 'created' | 'error' }
 ```
 
 #### Wire Format
@@ -278,7 +287,7 @@ The `request()` method adds a unique `id` field to outgoing messages for correla
 { "type": "instance.spawn", "data": { "cwd": "/app" }, "id": "abc123" }
 
 // Server should echo back the same id in the response
-{ "type": "instance.spawn", "data": { "instanceId": "inst-1" }, "id": "abc123" }
+{ "type": "instance.spawn", "data": { "instanceId": "inst-1", "status": "created" }, "id": "abc123" }
 ```
 
 Messages without an `id` field (or with an unrecognized `id`) are dispatched to regular event handlers as before.

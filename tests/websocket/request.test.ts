@@ -7,13 +7,21 @@ import {
 } from '../../src/websocket';
 import { describe, it, expect, beforeEach } from 'bun:test';
 
-// Define test events
+// Define test events - some with explicit response types, some without
 const events = new RiverEvents()
   .defineEvent('message', { data: '' as string })
+  // Event with explicit response type (different from request data)
   .defineEvent('instance.spawn', {
-    data: {} as { cwd: string; model?: string }
+    data: {} as { cwd: string; model?: string },
+    response: {} as { instanceId: string; status: 'created' | 'error' }
   })
+  // Event without explicit response - falls back to data type
   .defineEvent('ping', { data: {} as { timestamp: number } })
+  // Another event with explicit response type
+  .defineEvent('task.execute', {
+    data: {} as { taskId: string; params: Record<string, unknown> },
+    response: {} as { result: unknown; executionTime: number }
+  })
   .build();
 
 describe('RiverSocketAdapter.request()', () => {
@@ -43,21 +51,23 @@ describe('RiverSocketAdapter.request()', () => {
       expect(sent.id).toBeDefined();
       expect(typeof sent.id).toBe('string');
 
-      // Simulate response with matching id
+      // Simulate response with matching id - matches the response type
       adapter.handleMessage(
         JSON.stringify({
           type: 'instance.spawn',
-          data: { instanceId: 'inst-123' },
+          data: { instanceId: 'inst-123', status: 'created' },
           id: sent.id
         })
       );
 
       const result = await requestPromise;
-      expect(result).toEqual({ instanceId: 'inst-123' });
+      // result is typed as { instanceId: string; status: 'created' | 'error' }
+      expect(result).toEqual({ instanceId: 'inst-123', status: 'created' });
     });
 
-    it('should resolve with response data', async () => {
-      const requestPromise = adapter.request<{ pong: boolean }>(
+    it('should resolve with response data for events without explicit response type', async () => {
+      // ping event has no explicit response, so it falls back to data type
+      const requestPromise = adapter.request(
         'ping',
         { timestamp: Date.now() },
         mockSendFn
@@ -65,17 +75,71 @@ describe('RiverSocketAdapter.request()', () => {
 
       const sent = JSON.parse(sentMessages[0]);
 
-      // Respond
+      // Respond - response shape matches the data type
       adapter.handleMessage(
         JSON.stringify({
           type: 'ping',
-          data: { pong: true },
+          data: { timestamp: 12345 },
           id: sent.id
         })
       );
 
       const result = await requestPromise;
-      expect(result).toEqual({ pong: true });
+      // result is typed as { timestamp: number } (same as data)
+      expect(result).toEqual({ timestamp: 12345 });
+    });
+  });
+
+  describe('explicit response type inference', () => {
+    it('should infer response type from event definition', async () => {
+      // instance.spawn has explicit response type: { instanceId: string; status: 'created' | 'error' }
+      const requestPromise = adapter.request(
+        'instance.spawn',
+        { cwd: '/app', model: 'gpt-4' },
+        mockSendFn
+      );
+
+      const sent = JSON.parse(sentMessages[0]);
+
+      adapter.handleMessage(
+        JSON.stringify({
+          type: 'instance.spawn',
+          data: { instanceId: 'inst-456', status: 'created' },
+          id: sent.id
+        })
+      );
+
+      const result = await requestPromise;
+      // TypeScript should infer: { instanceId: string; status: 'created' | 'error' }
+      expect(result.instanceId).toBe('inst-456');
+      expect(result.status).toBe('created');
+    });
+
+    it('should work with task.execute having different request and response types', async () => {
+      // task.execute:
+      //   data: { taskId: string; params: Record<string, unknown> }
+      //   response: { result: unknown; executionTime: number }
+      const requestPromise = adapter.request(
+        'task.execute',
+        { taskId: 'task-1', params: { foo: 'bar' } },
+        mockSendFn
+      );
+
+      const sent = JSON.parse(sentMessages[0]);
+      expect(sent.data).toEqual({ taskId: 'task-1', params: { foo: 'bar' } });
+
+      adapter.handleMessage(
+        JSON.stringify({
+          type: 'task.execute',
+          data: { result: { output: 'success' }, executionTime: 150 },
+          id: sent.id
+        })
+      );
+
+      const result = await requestPromise;
+      // TypeScript should infer: { result: unknown; executionTime: number }
+      expect(result.executionTime).toBe(150);
+      expect(result.result).toEqual({ output: 'success' });
     });
   });
 
@@ -123,13 +187,13 @@ describe('RiverSocketAdapter.request()', () => {
 
   describe('multiple concurrent requests', () => {
     it('should handle multiple concurrent requests independently', async () => {
-      const request1Promise = adapter.request<{ id: number }>(
+      const request1Promise = adapter.request(
         'ping',
         { timestamp: 1 },
         mockSendFn
       );
 
-      const request2Promise = adapter.request<{ id: number }>(
+      const request2Promise = adapter.request(
         'ping',
         { timestamp: 2 },
         mockSendFn

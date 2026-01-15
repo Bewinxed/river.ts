@@ -1,5 +1,5 @@
 // src/websocket/adapter.ts
-import type { EventMap, EventData } from '../types/core';
+import type { EventMap, EventData, ResponseData } from '../types/core';
 import { RequestTimeoutError, WebSocketClosedError } from '../types/core';
 
 /**
@@ -186,23 +186,27 @@ export class RiverSocketAdapter<T extends EventMap> {
    * Send a message and wait for a response with matching id.
    * Implements RPC-style request/response semantics over WebSocket.
    *
+   * The response type is inferred from the event definition:
+   * - If the event has a `response` field defined, that type is used
+   * - Otherwise, falls back to the event's `data` type (EventData<T, K>)
+   *
    * @param type - Event type
    * @param data - Event payload
    * @param sendFn - Function to send the message (e.g., ws.send)
    * @param timeout - Timeout in ms (default: 30000)
-   * @returns Promise that resolves with response data (defaults to EventData<T, K>)
+   * @returns Promise that resolves with response data (inferred from event's response type)
    * @throws RequestTimeoutError if no response within timeout
    * @throws WebSocketClosedError if WebSocket closes while request is pending
    */
-  public request<K extends keyof T, TResponse = EventData<T, K>>(
+  public request<K extends keyof T>(
     type: K,
     data: T[K]['data'],
     sendFn: (message: string) => void,
     timeout: number = 30000
-  ): Promise<TResponse> {
+  ): Promise<ResponseData<T, K>> {
     const id = this.generateRequestId();
 
-    return new Promise<TResponse>((resolve, reject) => {
+    return new Promise<ResponseData<T, K>>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new RequestTimeoutError(String(type), timeout));
