@@ -123,8 +123,12 @@ export class RiverEmitter<T extends EventMap> {
     const event_config = this.eventDefinitions[event_type];
     const chunk_size = event_config?.chunkSize ?? 1024; // Default chunk size
 
+    // Extract SSE framing fields before processing data
+    const { id, retry, dataPayload } = this.extractSSEFields(payload);
+    const prefix = this.buildSSEPrefix(id, retry);
+
     // Extract data from payload for streaming - streaming events must have data property
-    const data = (payload as any).data;
+    const data = (dataPayload as any).data;
     if (data === undefined) {
       throw new Error(`Stream event ${String(event_type)} requires a 'data' property`);
     }
@@ -140,9 +144,9 @@ export class RiverEmitter<T extends EventMap> {
       for await (const item of iterable) {
         chunk.push(item);
         if (chunk.length >= chunk_size) {
-          // Create payload with chunked data, preserving other properties
-          const chunkPayload = { ...payload, data: chunk } as any;
-          const event_data = `event: ${String(
+          // Create payload with chunked data, preserving other properties (excluding SSE fields)
+          const chunkPayload = { ...dataPayload, data: chunk } as any;
+          const event_data = `${prefix}event: ${String(
             event_type
           )}\ndata: ${JSON.stringify(chunkPayload)}\n\n`;
           writeSuccess = await this.writeChunk(writer, event_data);
@@ -152,9 +156,9 @@ export class RiverEmitter<T extends EventMap> {
       }
       // Send any remaining items after the loop finishes (if write hasn't failed)
       if (writeSuccess && chunk.length > 0) {
-        // Create payload with remaining chunked data, preserving other properties
-        const finalPayload = { ...payload, data: chunk } as any;
-        const event_data = `event: ${String(
+        // Create payload with remaining chunked data, preserving other properties (excluding SSE fields)
+        const finalPayload = { ...dataPayload, data: chunk } as any;
+        const event_data = `${prefix}event: ${String(
           event_type
         )}\ndata: ${JSON.stringify(finalPayload)}\n\n`;
         await this.writeChunk(writer, event_data);
@@ -170,6 +174,30 @@ export class RiverEmitter<T extends EventMap> {
   }
 
   /**
+   * Strips SSE framing fields (id, retry) from the payload and returns them separately.
+   */
+  private extractSSEFields<K extends keyof T>(
+    payload: EmitPayload<T, K>
+  ): { id?: string; retry?: number; dataPayload: Record<string, unknown> } {
+    const { id, retry, ...dataPayload } = payload as Record<string, unknown> & { id?: string; retry?: number };
+    return { id, retry, dataPayload };
+  }
+
+  /**
+   * Builds the SSE prefix string for id: and retry: fields.
+   */
+  private buildSSEPrefix(id?: string, retry?: number): string {
+    let prefix = '';
+    if (id !== undefined) {
+      prefix += `id: ${id}\n`;
+    }
+    if (retry !== undefined) {
+      prefix += `retry: ${retry}\n`;
+    }
+    return prefix;
+  }
+
+  /**
    * Handles emitting a single event payload (stream: false or undefined).
    */
   private async emitSingleEvent<K extends keyof T>(
@@ -177,9 +205,11 @@ export class RiverEmitter<T extends EventMap> {
     event_type: K,
     payload: EmitPayload<T, K> // Expects the specific payload type for the event
   ): Promise<void> {
+    const { id, retry, dataPayload } = this.extractSSEFields(payload);
+    const prefix = this.buildSSEPrefix(id, retry);
     // Send the structured payload, correctly JSON stringified.
-    const event_data = `event: ${String(event_type)}\ndata: ${JSON.stringify(
-      payload
+    const event_data = `${prefix}event: ${String(event_type)}\ndata: ${JSON.stringify(
+      dataPayload
     )}\n\n`;
     await this.writeChunk(writer, event_data);
   }
@@ -231,27 +261,31 @@ export class RiverEmitter<T extends EventMap> {
    * Creates a ReadableStream for a new SSE connection.
    * The stream outputs Uint8Array chunks representing the SSE message payload.
    * @param options - Configuration for this specific stream connection.
-   * @param options.callback - Function executed when the connection starts. Receives an `emit` function scoped to this client and the `clientId`.
+   * @param options.callback - Function executed when the connection starts. Receives an `emit` function scoped to this client, the `clientId`, and the optional `lastEventId`.
    * @param options.clientId - Optional custom client ID. If not provided, a random one is generated.
    * @param options.ondisconnect - Optional callback executed when this client disconnects.
    * @param options.signal - Optional AbortSignal to link stream lifecycle to an external signal (e.g., HTTP request).
+   * @param options.lastEventId - Optional Last-Event-ID header value from the client for reconnection support.
    */
   public stream({
     callback,
     clientId: customClientId,
     ondisconnect,
-    signal
+    signal,
+    lastEventId
   }: {
     callback: (
       emit: <K extends keyof T>(
         event_type: K,
         payload: EmitPayload<T, K>
       ) => Promise<void>,
-      clientId: string
+      clientId: string,
+      lastEventId?: string | null
     ) => void | Promise<void>; // Allow async setup
     clientId?: string;
     ondisconnect?: (clientId: string) => void;
     signal?: AbortSignal;
+    lastEventId?: string | null;
   }): ReadableStream<Uint8Array> {
     // Explicitly returns stream of bytes
 
@@ -443,7 +477,7 @@ export class RiverEmitter<T extends EventMap> {
         // Execute the user's setup callback
         try {
           console.log(`RiverEmitter: Client ${clientId} connected.`);
-          await callback(emit, clientId);
+          await callback(emit, clientId, lastEventId);
           // If the callback completing naturally means the stream should end,
           // you might close the writer here:
           // await writer.close(); // This would trigger the pipe close/cleanup path.
