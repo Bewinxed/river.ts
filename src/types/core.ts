@@ -81,6 +81,7 @@ export type ResponseData<T, K extends keyof T> = T[K] extends BaseEvent
   : never;
 
 // Type to extract only user-defined properties (excluding stream and chunkSize)
+// Also allows optional SSE framing fields (id, retry) that are stripped before data serialization
 export type EmitPayload<T, K extends keyof T> = T[K] extends BaseEvent
-  ? Omit<T[K], 'type' | 'stream' | 'chunkSize'>
+  ? Omit<T[K], 'type' | 'stream' | 'chunkSize'> & { id?: string; retry?: number }
   : never;

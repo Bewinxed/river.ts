@@ -58,3 +58,6 @@ Thumbs.db
 
 # autobahn reports
 reports/
+
+# Lock files
+package-lock.json
