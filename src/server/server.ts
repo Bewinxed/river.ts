@@ -184,12 +184,22 @@ export class RiverEmitter<T extends EventMap> {
   }
 
   /**
+   * Sanitizes an SSE id field to ensure it does not contain CR or LF characters.
+   * See: https://html.spec.whatwg.org/multipage/server-sent-events.html
+   */
+  private sanitizeSSEId(id: string): string {
+    // Remove CR and LF characters which would break SSE framing.
+    return id.replace(/[\r\n]/g, '');
+  }
+
+  /**
    * Builds the SSE prefix string for id: and retry: fields.
    */
   private buildSSEPrefix(id?: string, retry?: number): string {
     let prefix = '';
     if (id !== undefined) {
-      prefix += `id: ${id}\n`;
+      const safeId = this.sanitizeSSEId(String(id));
+      prefix += `id: ${safeId}\n`;
     }
     if (retry !== undefined) {
       prefix += `retry: ${retry}\n`;
