@@ -37,15 +37,19 @@ jobs:
       - name: Check if version changed
         id: version
         run: |
-          PUBLISHED=$(npm view river.ts version 2>/dev/null || echo "0.0.0")
           CURRENT=$(node -p "require('./package.json').version")
-          echo "published=$PUBLISHED" >> $GITHUB_OUTPUT
           echo "current=$CURRENT" >> $GITHUB_OUTPUT
-          if [ "$PUBLISHED" != "$CURRENT" ]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
+          # Publish only a version the registry does not have yet.
+          if [ "$(npm view "river.ts@$CURRENT" version 2>/dev/null)" = "$CURRENT" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
           fi
+          # A prerelease (1.3.0-test.1) goes to the "test" dist-tag, anything else to "latest".
+          case "$CURRENT" in
+            *-*) echo "tag=test" >> $GITHUB_OUTPUT ;;
+            *) echo "tag=latest" >> $GITHUB_OUTPUT ;;
+          esac
 
       - name: Build
         if: steps.version.outputs.changed == 'true'
@@ -54,4 +58,4 @@ jobs:
       - name: Publish
         if: steps.version.outputs.changed == 'true'
         working-directory: ./dist
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public --tag ${{ steps.version.outputs.tag }}

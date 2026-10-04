@@ -21,9 +21,7 @@
     "watch": "bunx unbuild watch",
     "bump": "npm version patch --no-git-tag-version",
     "bump:test": "npm version prerelease --preid=test --no-git-tag-version",
-    "pub:test": "cd ./dist && npm publish --tag test",
-    "release": "npm run bump && npm run build",
-    "release:test": "npm run bump:test && npm run build && npm run pub:test"
+    "release": "npm run bump && npm run build"
   },
   "exports": {
     ".": {

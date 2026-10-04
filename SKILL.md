@@ -244,4 +244,4 @@ Build with: `npm run build` (uses unbuild)
 
 Output goes to `dist/` with separate entry points for `/client`, `/server`, `/websocket`.
 
-Release by bumping the version in `package.json` and pushing to main: `.github/workflows/publish.yml` typechecks, builds and publishes to npm when the version differs from the registry. Do not run `npm publish` by hand.
+Release by bumping the version in `package.json` and pushing to main: `.github/workflows/publish.yml` typechecks, builds and publishes to npm when the registry does not have that version yet. A prerelease version (one containing `-`, such as `1.3.0-test.1` from `npm run bump:test`) is published under the `test` dist-tag; any other version becomes `latest`. The workflow is the only publisher.
