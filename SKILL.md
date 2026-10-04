@@ -85,7 +85,7 @@ await emitter.broadcast('message', { message: 'Update' }, 42);          // optio
 await emitter.sendToClient('client-id', 'message', { message: 'x' }, 43); // optional id
 ```
 
-Event ids are `string | number`; keep them ASCII. For `stream: true` events the id is written after the last chunk.
+Event ids are `string | number` and may be non-ASCII: `stream()` decodes the `Last-Event-ID` header as UTF-8, so the callback gets the id as it was emitted. For `stream: true` events the id is written after the last chunk.
 
 ## Client-Side SSE (RiverClient)
 
@@ -126,7 +126,7 @@ Reconnect rules:
 - Retries: network errors, 5xx, 429, and a stream that ends without a `close` event.
 - Stops for good: HTTP 204, other 4xx, `client.close()`, the server's `close` event.
 - Delay: `Retry-After` (429/503), else the server's `retry:` value, else exponential backoff with jitter, capped at `maxDelay`.
-- Every reconnect sends `Last-Event-ID` (fetch path). A header-less GET uses the browser `EventSource`, which reconnects and resumes by itself.
+- Every reconnect sends `Last-Event-ID` (fetch path). A GET with no headers at all (none in `init()`, none in `prepare()`) uses the browser `EventSource`, which reconnects and resumes by itself; any header, another method or an initial `lastEventId` selects `fetch`.
 
 The parser follows the WHATWG event-stream rules: CRLF/LF/CR line endings, `:` comments, `event`/`data`/`id`/`retry` fields, multiple `data:` lines joined with `\n`, default type `message`. Event data must be JSON.
 
@@ -234,14 +234,14 @@ src/
     └── http.ts       # HTTPMethods type
 ```
 
-## Testing
+## Verification
 
-Run tests with: `bun test`
+There are no unit tests. Check a change with `bunx tsc --noEmit`, `bun run build`, and a live run against a real server.
 
-Test files are in `tests/` directory. WebSocket request tests are in `tests/websocket/request.test.ts`.
-
-## Build
+## Build and release
 
 Build with: `npm run build` (uses unbuild)
 
 Output goes to `dist/` with separate entry points for `/client`, `/server`, `/websocket`.
+
+Release by bumping the version in `package.json` and pushing to main: `.github/workflows/publish.yml` typechecks, builds and publishes to npm when the version differs from the registry. Do not run `npm publish` by hand.

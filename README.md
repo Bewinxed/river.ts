@@ -145,10 +145,10 @@ await emitter.broadcast('ping', { message: 'pong' }, 42);
 | `stream()` option | Type | What it does |
 | --- | --- | --- |
 | `retry` | `number` (ms) | Written once as a `retry:` field when the stream opens. |
-| `lastEventId` | `string \| null` | The request's `Last-Event-ID` header. Passed to `callback` as its third argument (`undefined` when absent). |
+| `lastEventId` | `string \| null` | The request's `Last-Event-ID` header, as received. Decoded as UTF-8 and passed to `callback` as its third argument (`undefined` when absent). |
 | `keepAlive` | `number` (ms) | Interval at which a `: keep-alive` comment is written. Clients ignore it. |
 
-Ids are strings or numbers. Keep them ASCII: they travel back in an HTTP header. For a `stream: true` event the id is written after the last chunk, so a client that lost the connection halfway asks for the event again.
+Ids are strings or numbers, and may contain non-ASCII characters: pass the `Last-Event-ID` header to `stream()` as you received it and the callback gets the id exactly as it was emitted. For a `stream: true` event the id is written after the last chunk, so a client that lost the connection halfway asks for the event again.
 
 ### 🚀 On the Client (SSE)
 
@@ -228,7 +228,7 @@ With `reconnect` on:
 - **Delay:** `Retry-After` on a `429` or `503`; otherwise the server's `retry:` value if it sent one; otherwise exponential backoff with jitter from `initialDelay` up to `maxDelay`.
 - **Resume:** every reconnect sends the last received event id as the `Last-Event-ID` header, so the server can replay from there.
 
-A plain `GET` without headers uses the browser's `EventSource`, which reconnects and sends `Last-Event-ID` by itself. Requests with headers, another method, or an initial `lastEventId` use `fetch`. The parser follows the [WHATWG event-stream rules](https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation): CRLF, LF or CR line endings, `:` comments, `event` / `data` / `id` / `retry` fields, several `data:` lines joined with a newline, and `message` as the default event type.
+A plain `GET` with no headers at all (neither in `init()` nor in `prepare()`) uses the browser's `EventSource`, which reconnects and sends `Last-Event-ID` by itself. Requests with headers, another method, or an initial `lastEventId` use `fetch`, because `EventSource` cannot send them. The parser follows the [WHATWG event-stream rules](https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation): CRLF, LF or CR line endings, `:` comments, `event` / `data` / `id` / `retry` fields, several `data:` lines joined with a newline, and `message` as the default event type.
 
 ### 🔌 WebSocket Support
 

@@ -206,10 +206,19 @@ export class RiverClient<T extends EventMap> extends EventTarget {
     await this.fetchEventStream(this.abortController.signal);
   }
 
+  /** Headers from `init()` with the ones from `prepare()` on top. */
+  private requestHeaders(): Headers {
+    const headers = new Headers(this.config.headers);
+    new Headers(this.requestInit?.headers).forEach((value, key) =>
+      headers.set(key, value)
+    );
+    return headers;
+  }
+
   private shouldUseEventSource(): boolean {
     return (
-      !this.requestInit?.headers &&
-      // EventSource cannot send an initial Last-Event-ID
+      // EventSource cannot send headers or an initial Last-Event-ID
+      this.requestHeaders().keys().next().done === true &&
       !this.lastId &&
       (this.requestInit?.method ?? 'GET') === 'GET' &&
       typeof EventSource !== 'undefined'
@@ -247,10 +256,7 @@ export class RiverClient<T extends EventMap> extends EventTarget {
       let failure: unknown;
 
       try {
-        const headers = new Headers(this.config.headers);
-        new Headers(this.requestInit?.headers).forEach((value, key) =>
-          headers.set(key, value)
-        );
+        const headers = this.requestHeaders();
         if (this.lastId) {
           // Header values are byte strings; the id goes out UTF-8 encoded.
           headers.set(

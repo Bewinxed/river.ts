@@ -19,12 +19,10 @@
   "scripts": {
     "build": "bunx unbuild && cat ./package.json | grep -v '\"private\":' > dist/package.json && cp README.md dist/README.md",
     "watch": "bunx unbuild watch",
-    "test": "bun test",
     "bump": "npm version patch --no-git-tag-version",
     "bump:test": "npm version prerelease --preid=test --no-git-tag-version",
-    "pub": "cd ./dist && npm publish",
     "pub:test": "cd ./dist && npm publish --tag test",
-    "release": "npm run bump && npm run build && npm run pub",
+    "release": "npm run bump && npm run build",
     "release:test": "npm run bump:test && npm run build && npm run pub:test"
   },
   "exports": {

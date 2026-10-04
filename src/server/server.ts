@@ -12,6 +12,23 @@ export interface RiverConfig {
 /** Written as the SSE `id:` field; the client sends the last one back as `Last-Event-ID`. */
 export type EventId = string | number;
 
+/**
+ * Clients send `Last-Event-ID` as UTF-8, but runtimes hand header values over
+ * with one character per byte. Reads those bytes as UTF-8, so a non-ASCII id
+ * comes back as it was emitted. A value the runtime already decoded (or that
+ * is not UTF-8) is returned unchanged.
+ */
+function decodeHeaderValue(value: string): string {
+  if (!/[\x80-\xff]/.test(value) || /[^\x00-\xff]/.test(value)) return value;
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(
+      Uint8Array.from(value, (char) => char.charCodeAt(0))
+    );
+  } catch {
+    return value;
+  }
+}
+
 /** Represents a source that can be iterated over, synchronously or asynchronously. */
 export type IterableSource<T> = Iterable<T> | AsyncIterable<T>;
 // --- End Placeholder Types ---
@@ -255,7 +272,7 @@ export class RiverEmitter<T extends EventMap> {
    * @param options.ondisconnect - Optional callback executed when this client disconnects.
    * @param options.signal - Optional AbortSignal to link stream lifecycle to an external signal (e.g., HTTP request).
    * @param options.retry - Optional reconnection delay in ms, sent once as a `retry:` field when the stream opens.
-   * @param options.lastEventId - The request's `Last-Event-ID` header, if any. Passed to `callback` so it can replay missed events.
+   * @param options.lastEventId - The request's `Last-Event-ID` header as received, if any. Decoded as UTF-8 and passed to `callback` so it can replay missed events.
    * @param options.keepAlive - Optional interval in ms at which a comment line is written, so proxies keep an idle connection open.
    */
   public stream({
@@ -490,7 +507,11 @@ export class RiverEmitter<T extends EventMap> {
         // Execute the user's setup callback
         try {
           console.log(`RiverEmitter: Client ${clientId} connected.`);
-          await callback(emit, clientId, lastEventId || undefined);
+          await callback(
+            emit,
+            clientId,
+            lastEventId ? decodeHeaderValue(lastEventId) : undefined
+          );
           // If the callback completing naturally means the stream should end,
           // you might close the writer here:
           // await writer.close(); // This would trigger the pipe close/cleanup path.
