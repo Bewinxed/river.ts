@@ -1,6 +1,16 @@
 // src/websocket/adapter.ts
-import type { EventMap, EventData, ResponseData } from '../types/core';
-import { RequestTimeoutError, WebSocketClosedError } from '../types/core';
+import type {
+  EventMap,
+  EventData,
+  InvalidHandler,
+  ResponseData
+} from '../types/core';
+import {
+  InvalidMessageError,
+  RequestTimeoutError,
+  WebSocketClosedError
+} from '../types/core';
+import { createValidator } from '../validate';
 
 /**
  * Environment-agnostic WebSocket adapter
@@ -8,6 +18,7 @@ import { RequestTimeoutError, WebSocketClosedError } from '../types/core';
  */
 /** Pending request tracking for request/response semantics */
 interface PendingRequest {
+  type: string;
   resolve: (data: unknown) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
@@ -21,10 +32,19 @@ export class RiverSocketAdapter<T extends EventMap> {
   private debug: boolean = false;
   private pendingRequests = new Map<string, PendingRequest>();
   private requestIdCounter = 0;
+  private validate: ReturnType<typeof createValidator>;
 
-  constructor(events: T, options: { debug: boolean } = { debug: false }) {
+  /**
+   * @param options.onInvalid - Called for every incoming message or response
+   * whose data fails its event's schema. The message is not dispatched.
+   */
+  constructor(
+    events: T,
+    options: { debug?: boolean; onInvalid?: InvalidHandler } = {}
+  ) {
     this.events = events;
-    this.debug = options.debug;
+    this.debug = options.debug ?? false;
+    this.validate = createValidator(options.onInvalid);
   }
 
   /**
@@ -102,7 +122,19 @@ export class RiverSocketAdapter<T extends EventMap> {
             const pending = this.pendingRequests.get(id)!;
             this.pendingRequests.delete(id);
             clearTimeout(pending.timeout);
-            pending.resolve(data);
+            // A response is checked by `responseSchema`, or by `schema` when
+            // the event declares no separate response type.
+            const event = this.events[pending.type];
+            this.validate(
+              pending.type,
+              event?.responseSchema ??
+                (event && 'response' in event ? undefined : event?.schema),
+              data,
+              message,
+              pending.resolve,
+              (issues) =>
+                pending.reject(new InvalidMessageError(pending.type, issues))
+            );
             return;
           }
 
@@ -112,7 +144,13 @@ export class RiverSocketAdapter<T extends EventMap> {
             typeof type === 'string' &&
             this.events[type as keyof T]
           ) {
-            this.dispatchEvent(type as keyof T, data, metadata);
+            this.validate(
+              type,
+              this.events[type]?.schema,
+              data,
+              message,
+              (value) => this.dispatchEvent(type as keyof T, value, metadata)
+            );
             return;
           }
         } catch (error) {
@@ -213,6 +251,7 @@ export class RiverSocketAdapter<T extends EventMap> {
       }, timeout);
 
       this.pendingRequests.set(id, {
+        type: String(type),
         resolve: resolve as (data: unknown) => void,
         reject,
         timeout: timeoutId

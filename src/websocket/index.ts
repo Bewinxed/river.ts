@@ -1,3 +1,7 @@
 export * from './websocket';
-export { RequestTimeoutError, WebSocketClosedError } from '../types/core';
-export type { ResponseData } from '../types/core';
+export {
+  InvalidMessageError,
+  RequestTimeoutError,
+  WebSocketClosedError
+} from '../types/core';
+export type { InvalidHandler, ResponseData } from '../types/core';

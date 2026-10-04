@@ -9,6 +9,9 @@ export interface RiverConfig {
   headers?: Record<string, string>;
 }
 
+/** Written as the SSE `id:` field; the client sends the last one back as `Last-Event-ID`. */
+export type EventId = string | number;
+
 /** Represents a source that can be iterated over, synchronously or asynchronously. */
 export type IterableSource<T> = Iterable<T> | AsyncIterable<T>;
 // --- End Placeholder Types ---
@@ -111,14 +114,24 @@ export class RiverEmitter<T extends EventMap> {
     }
   }
 
+  /** An `id:` line. CR, LF and NULL cannot appear in an event id, so they are dropped. */
+  private idLine(id: EventId | undefined): string {
+    return id === undefined
+      ? ''
+      : `id: ${String(id).replace(/[\r\n\0]/g, '')}\n`;
+  }
+
   /**
    * Handles emitting events where the data is potentially iterable (stream: true).
    * Chunks the data according to event config or defaults.
+   * The id is written after the last chunk, so a client that lost the
+   * connection halfway does not record the event as received.
    */
   private async emitStreamEvent<K extends keyof T>(
     writer: WritableStreamDefaultWriter,
     event_type: K,
-    payload: EmitPayload<T, K> // Expects the specific payload type for the event
+    payload: EmitPayload<T, K>, // Expects the specific payload type for the event
+    id?: EventId
   ): Promise<void> {
     const event_config = this.eventDefinitions[event_type];
     const chunk_size = event_config?.chunkSize ?? 1024; // Default chunk size
@@ -157,7 +170,11 @@ export class RiverEmitter<T extends EventMap> {
         const event_data = `event: ${String(
           event_type
         )}\ndata: ${JSON.stringify(finalPayload)}\n\n`;
-        await this.writeChunk(writer, event_data);
+        writeSuccess = await this.writeChunk(writer, event_data);
+      }
+      // A block with only an id sets the client's last event id and dispatches nothing.
+      if (writeSuccess && id !== undefined) {
+        await this.writeChunk(writer, `${this.idLine(id)}\n`);
       }
     } catch (error) {
       // Error during iteration itself
@@ -175,12 +192,13 @@ export class RiverEmitter<T extends EventMap> {
   private async emitSingleEvent<K extends keyof T>(
     writer: WritableStreamDefaultWriter,
     event_type: K,
-    payload: EmitPayload<T, K> // Expects the specific payload type for the event
+    payload: EmitPayload<T, K>, // Expects the specific payload type for the event
+    id?: EventId
   ): Promise<void> {
     // Send the structured payload, correctly JSON stringified.
-    const event_data = `event: ${String(event_type)}\ndata: ${JSON.stringify(
-      payload
-    )}\n\n`;
+    const event_data = `${this.idLine(id)}event: ${String(
+      event_type
+    )}\ndata: ${JSON.stringify(payload)}\n\n`;
     await this.writeChunk(writer, event_data);
   }
 
@@ -191,15 +209,16 @@ export class RiverEmitter<T extends EventMap> {
   private async emitEventInternal<K extends keyof T>(
     writer: WritableStreamDefaultWriter,
     event_type: K,
-    payload: EmitPayload<T, K> // Expects the specific payload type for the event
+    payload: EmitPayload<T, K>, // Expects the specific payload type for the event
+    id?: EventId
   ): Promise<void> {
     const event_config = this.eventDefinitions[event_type];
 
     // Check the definition provided during initialization
     if (event_config?.stream) {
-      await this.emitStreamEvent(writer, event_type, payload);
+      await this.emitStreamEvent(writer, event_type, payload, id);
     } else {
-      await this.emitSingleEvent(writer, event_type, payload);
+      await this.emitSingleEvent(writer, event_type, payload, id);
     }
   }
 
@@ -235,23 +254,34 @@ export class RiverEmitter<T extends EventMap> {
    * @param options.clientId - Optional custom client ID. If not provided, a random one is generated.
    * @param options.ondisconnect - Optional callback executed when this client disconnects.
    * @param options.signal - Optional AbortSignal to link stream lifecycle to an external signal (e.g., HTTP request).
+   * @param options.retry - Optional reconnection delay in ms, sent once as a `retry:` field when the stream opens.
+   * @param options.lastEventId - The request's `Last-Event-ID` header, if any. Passed to `callback` so it can replay missed events.
+   * @param options.keepAlive - Optional interval in ms at which a comment line is written, so proxies keep an idle connection open.
    */
   public stream({
     callback,
     clientId: customClientId,
     ondisconnect,
-    signal
+    signal,
+    retry,
+    lastEventId,
+    keepAlive
   }: {
     callback: (
       emit: <K extends keyof T>(
         event_type: K,
-        payload: EmitPayload<T, K>
+        payload: EmitPayload<T, K>,
+        id?: EventId
       ) => Promise<void>,
-      clientId: string
+      clientId: string,
+      lastEventId: string | undefined
     ) => void | Promise<void>; // Allow async setup
     clientId?: string;
     ondisconnect?: (clientId: string) => void;
     signal?: AbortSignal;
+    retry?: number;
+    lastEventId?: string | null;
+    keepAlive?: number;
   }): ReadableStream<Uint8Array> {
     // Explicitly returns stream of bytes
 
@@ -259,6 +289,7 @@ export class RiverEmitter<T extends EventMap> {
     const emitterInstance = this; // Stable reference for closures
     let writerRef: WritableStreamDefaultWriter | null = null; // Ref for cancellation
     let clientIdRef: string | null = null; // Ref for cancellation/cleanup
+    let keepAliveTimer: ReturnType<typeof setInterval> | undefined;
 
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
@@ -294,6 +325,7 @@ export class RiverEmitter<T extends EventMap> {
 
           // 1. Remove from active clients *before* potentially slow operations
           emitterInstance.clients.delete(clientId);
+          clearInterval(keepAliveTimer);
 
           // 2. Call user's disconnect callback
           if (ondisconnect) {
@@ -333,11 +365,17 @@ export class RiverEmitter<T extends EventMap> {
         // Typed emit function scoped to this client's writer
         const emit = async <K extends keyof T>(
           event_type: K,
-          payload: EmitPayload<T, K>
+          payload: EmitPayload<T, K>,
+          id?: EventId
         ): Promise<void> => {
           // Only attempt to emit if the client is still considered connected
           if (emitterInstance.clients.has(clientId)) {
-            await emitterInstance.emitEventInternal(writer, event_type, payload);
+            await emitterInstance.emitEventInternal(
+              writer,
+              event_type,
+              payload,
+              id
+            );
           } else {
             console.warn(
               `RiverEmitter: Attempted to emit to disconnected client ${clientId}`
@@ -440,10 +478,19 @@ export class RiverEmitter<T extends EventMap> {
             removeSignalListener();
           });
 
+        if (retry !== undefined) {
+          void emitterInstance.writeChunk(writer, `retry: ${retry}\n\n`);
+        }
+        if (keepAlive) {
+          keepAliveTimer = setInterval(() => {
+            void emitterInstance.writeChunk(writer, ': keep-alive\n\n');
+          }, keepAlive);
+        }
+
         // Execute the user's setup callback
         try {
           console.log(`RiverEmitter: Client ${clientId} connected.`);
-          await callback(emit, clientId);
+          await callback(emit, clientId, lastEventId || undefined);
           // If the callback completing naturally means the stream should end,
           // you might close the writer here:
           // await writer.close(); // This would trigger the pipe close/cleanup path.
@@ -489,7 +536,8 @@ export class RiverEmitter<T extends EventMap> {
    */
   public async broadcast<K extends keyof T>(
     event_type: K,
-    payload: EmitPayload<T, K>
+    payload: EmitPayload<T, K>,
+    id?: EventId
   ): Promise<void> {
     // Get a stable list of client entries [clientId, clientInfo] *before* awaiting
     const clientEntries = Array.from(this.clients.entries());
@@ -500,7 +548,7 @@ export class RiverEmitter<T extends EventMap> {
     const promises = clientEntries.map(
       (
         [, { writer }] // Only need writer for the promise
-      ) => this.emitEventInternal(writer, event_type, payload)
+      ) => this.emitEventInternal(writer, event_type, payload, id)
     );
 
     const results = await Promise.allSettled(promises);
@@ -561,12 +609,18 @@ export class RiverEmitter<T extends EventMap> {
   public async sendToClient<K extends keyof T>(
     clientId: string,
     event_type: K,
-    payload: EmitPayload<T, K>
+    payload: EmitPayload<T, K>,
+    id?: EventId
   ): Promise<void> {
     const clientInfo = this.clients.get(clientId);
     if (clientInfo) {
       try {
-        await this.emitEventInternal(clientInfo.writer, event_type, payload);
+        await this.emitEventInternal(
+          clientInfo.writer,
+          event_type,
+          payload,
+          id
+        );
       } catch (error) {
         console.error(
           `RiverEmitter: Error sending event ${String(

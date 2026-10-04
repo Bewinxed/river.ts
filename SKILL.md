@@ -27,10 +27,17 @@ const events = new RiverEvents()
     data: {} as { method: string; params: unknown },
     response: {} as { result: unknown; error?: string }
   })
+  // Runtime validation: `data` is inferred from the schema's output
+  .defineEvent('job.run', {
+    schema: z.object({ id: z.string(), priority: z.number() }),
+    responseSchema: z.object({ ok: z.boolean() }) // optional, for request()
+  })
   .build();
 ```
 
 Reserved event types: `close`, `error` - do not define these.
+
+`schema` and `responseSchema` accept any Standard Schema (zod, valibot, arktype; https://standardschema.dev). Events without one are type-checked only.
 
 ## Server-Side SSE (RiverEmitter)
 
@@ -58,6 +65,28 @@ await emitter.broadcast('message', { message: 'Update' });
 await emitter.sendToClient('client-id', 'data', { data: { id: 2, name: 'specific' } });
 ```
 
+Resumable streams. All options are optional:
+
+```typescript
+const stream = emitter.stream({
+  retry: 3000,            // ms; written once as `retry:` when the stream opens
+  keepAlive: 15_000,      // ms; writes a `: keep-alive` comment so proxies keep the connection
+  lastEventId: request.headers.get('Last-Event-ID'), // read it from the request yourself
+  signal: request.signal,
+  callback: async (emit, clientId, lastEventId) => {
+    // lastEventId is undefined on a first connection; replay everything after it
+    for (const entry of log.after(lastEventId)) {
+      await emit('message', { message: entry.text }, entry.id); // 3rd arg = event id
+    }
+  }
+});
+
+await emitter.broadcast('message', { message: 'Update' }, 42);          // optional id
+await emitter.sendToClient('client-id', 'message', { message: 'x' }, 43); // optional id
+```
+
+Event ids are `string | number`; keep them ASCII. For `stream: true` events the id is written after the last chunk.
+
 ## Client-Side SSE (RiverClient)
 
 ```typescript
@@ -73,7 +102,33 @@ client
 
 // Close connection
 client.close();
+// stream() can be called again after close()
 ```
+
+Client options (all optional; reconnect is off by default):
+
+```typescript
+const client = RiverClient.init(events, {
+  reconnect: true,                       // or { initialDelay: 1000, maxDelay: 30_000 }
+  lastEventId: savedId,                  // sent as Last-Event-ID on the first connection
+  onInvalid: (type, issues, raw) => {},  // events that fail their schema; never dispatched
+  fetchFn: fetch,
+  headers: { Authorization: 'Bearer ...' }
+});
+
+client.lastEventId; // read-only: id of the last event received; persist it to resume later
+client.addEventListener('open', () => {});       // each successful connection
+client.addEventListener('reconnect', (e) => {}); // (e as CustomEvent).detail = { attempt, delay, error }
+client.addEventListener('close', () => {});      // stopped for good
+```
+
+Reconnect rules:
+- Retries: network errors, 5xx, 429, and a stream that ends without a `close` event.
+- Stops for good: HTTP 204, other 4xx, `client.close()`, the server's `close` event.
+- Delay: `Retry-After` (429/503), else the server's `retry:` value, else exponential backoff with jitter, capped at `maxDelay`.
+- Every reconnect sends `Last-Event-ID` (fetch path). A header-less GET uses the browser `EventSource`, which reconnects and resumes by itself.
+
+The parser follows the WHATWG event-stream rules: CRLF/LF/CR line endings, `:` comments, `event`/`data`/`id`/`retry` fields, multiple `data:` lines joined with `\n`, default type `message`. Event data must be JSON.
 
 ## WebSocket Adapter (RiverSocketAdapter)
 
@@ -92,6 +147,21 @@ adapter.handleMessage(messageData);
 // Send messages
 adapter.send('data', { data: { id: 1, name: 'test' } }, (msg) => ws.send(msg));
 ```
+
+Runtime validation (events with a `schema`):
+
+```typescript
+import { RiverSocketAdapter, InvalidMessageError } from 'river.ts/websocket';
+
+const adapter = new RiverSocketAdapter(events, {
+  onInvalid: (type, issues, raw) => console.warn(type, issues, raw)
+});
+```
+
+- `handleMessage()` validates `data` against the event's `schema`; an invalid message goes to `onInvalid` and is not dispatched. Without `onInvalid` it is logged with `console.warn`.
+- `request()` validates the response against `responseSchema` (or `schema` when the event has neither `responseSchema` nor a `response` type) and rejects with `InvalidMessageError` (`.type`, `.issues`) when invalid.
+- Handlers receive the schema's output. Async schemas are supported and arrival order is kept.
+- `RiverClient` does the same for the `data` field of incoming SSE events.
 
 ## WebSocket Request/Response Pattern
 
@@ -144,7 +214,9 @@ import { EventData, ResponseData, EmitPayload } from 'river.ts';
 
 // EventData<T, K> - Extract data type for receiving/handling
 // ResponseData<T, K> - Extract response type for request() return value
-// EmitPayload<T, K> - Extract payload type for emitting (excludes type/stream/chunkSize)
+// EmitPayload<T, K> - Extract payload type for emitting (excludes type/stream/chunkSize/schema/responseSchema)
+// InvalidHandler - (type, issues, raw) => void, the `onInvalid` signature
+// InvalidMessageError - thrown by request() for a response that fails its schema
 ```
 
 ## Project Structure
@@ -153,6 +225,7 @@ import { EventData, ResponseData, EmitPayload } from 'river.ts';
 src/
 ├── index.ts          # Main exports (RiverEvents, types)
 ├── builder.ts        # RiverEvents builder class
+├── validate.ts       # Standard Schema validation shared by client and websocket
 ├── client/           # RiverClient for SSE consumption
 ├── server/           # RiverEmitter for SSE streaming
 ├── websocket/        # RiverSocketAdapter for WebSocket

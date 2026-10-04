@@ -1,4 +1,4 @@
-import type { BaseEvent, IterableSource } from './types/core';
+import type { ApplySchemas, BaseEvent, IterableSource } from './types/core';
 import type { EventMap } from './types/core';
 
 type Prettify<T> = {
@@ -30,15 +30,19 @@ export class RiverEvents<T extends EventMap = { close: BaseEvent }> {
       (E['stream'] extends true
         ? { stream: true; data: EnsureIterable<E['data']>; chunk_size?: number }
         : { stream?: false; chunk_size?: number })
-  ): RiverEvents<Prettify<T & Record<K, Prettify<{ type: K } & E>>>> {
+  ): RiverEvents<
+    Prettify<T & Record<K, Prettify<{ type: K } & ApplySchemas<E>>>>
+  > {
     if (event_type === 'close' || event_type === 'error') {
       throw new Error(`ERROR: Event type ${event_type} is reserved.`);
     }
     const new_events = {
       ...this.events,
       [event_type]: { type: event_type, ...config }
-    } as unknown as T & Record<K, E & { type: K }>;
-    return new RiverEvents<T & Record<K, E & { type: K }>>(new_events);
+    } as unknown as T & Record<K, ApplySchemas<E> & { type: K }>;
+    return new RiverEvents<T & Record<K, ApplySchemas<E> & { type: K }>>(
+      new_events
+    );
   }
 
   public build(): T {

@@ -1,4 +1,5 @@
 // core.ts
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 export class RiverError extends Error {
   constructor(message: string) {
@@ -24,6 +25,19 @@ export class WebSocketClosedError extends Error {
   }
 }
 
+/** Thrown to a `request()` caller whose response failed its schema. */
+export class InvalidMessageError extends Error {
+  constructor(
+    public type: string,
+    public issues: ReadonlyArray<StandardSchemaV1.Issue>
+  ) {
+    super(
+      `Invalid '${type}' message: ${issues.map((i) => i.message).join('; ')}`
+    );
+    this.name = 'InvalidMessageError';
+  }
+}
+
 export interface BaseEvent {
   type: string;
   message?: string;
@@ -32,7 +46,18 @@ export interface BaseEvent {
   error?: unknown;
   stream?: boolean;
   chunkSize?: number;
+  /** Standard Schema (zod, valibot, arktype, ...) that validates incoming `data`. */
+  schema?: StandardSchemaV1;
+  /** Standard Schema that validates the response to a WebSocket `request()`. */
+  responseSchema?: StandardSchemaV1;
 }
+
+/** Receives every incoming message that failed its schema. `raw` is the message as received. */
+export type InvalidHandler = (
+  type: string,
+  issues: ReadonlyArray<StandardSchemaV1.Issue>,
+  raw: unknown
+) => void;
 
 export type EventMap = Record<string, BaseEvent>;
 
@@ -82,5 +107,25 @@ export type ResponseData<T, K extends keyof T> = T[K] extends BaseEvent
 
 // Type to extract only user-defined properties (excluding stream and chunkSize)
 export type EmitPayload<T, K extends keyof T> = T[K] extends BaseEvent
-  ? Omit<T[K], 'type' | 'stream' | 'chunkSize'>
+  ? Omit<T[K], 'type' | 'stream' | 'chunkSize' | 'schema' | 'responseSchema'>
   : never;
+
+/**
+ * Replaces `data` / `response` with the output type of `schema` /
+ * `responseSchema` when an event definition carries them.
+ */
+export type ApplySchemas<E> = E extends
+  | { schema: StandardSchemaV1 }
+  | { responseSchema: StandardSchemaV1 }
+  ? Omit<
+      E,
+      | (E extends { schema: StandardSchemaV1 } ? 'data' : never)
+      | (E extends { responseSchema: StandardSchemaV1 } ? 'response' : never)
+    > &
+      (E extends { schema: infer S extends StandardSchemaV1 }
+        ? { data: StandardSchemaV1.InferOutput<S> }
+        : {}) &
+      (E extends { responseSchema: infer R extends StandardSchemaV1 }
+        ? { response: StandardSchemaV1.InferOutput<R> }
+        : {})
+  : E;

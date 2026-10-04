@@ -11,6 +11,7 @@
     "outDir": "./dist",
     // Enable latest features
     "lib": ["ESNext", "DOM", "dom.iterable"],
+    "types": ["node"],
     "target": "ESNext",
     "module": "ESNext",
     "moduleDetection": "force",

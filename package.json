@@ -50,11 +50,13 @@
     }
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "typescript": "^5.4.5",
-    "unbuild": "^2.0.0",
     "@total-typescript/tsconfig": "^1.0.4",
-    "@types/node": "^20.14.2"
+    "@types/bun": "^1.4.2",
+    "@types/node": "^26.6.4",
+    "typescript": "^6.0.3",
+    "unbuild": "^3.6.1"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@standard-schema/spec": "^1.1.0"
+  }
 }
